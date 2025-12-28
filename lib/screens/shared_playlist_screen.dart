@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../config/app_config.dart';
 import '../providers/music_provider.dart';
 import 'package:provider/provider.dart';
+import '../widgets/skeleton_loader.dart';
 
 /// Screen for viewing a shared playlist via deep link
 class SharedPlaylistScreen extends StatefulWidget {
@@ -101,8 +102,31 @@ class _SharedPlaylistScreenState extends State<SharedPlaylistScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              // Skeleton for playlist header
+              const SkeletonLoader(width: 120, height: 120, borderRadius: 16),
+              const SizedBox(height: 20),
+              const SkeletonLoader(width: 180, height: 24, borderRadius: 4),
+              const SizedBox(height: 8),
+              const SkeletonLoader(width: 140, height: 14, borderRadius: 4),
+              const SizedBox(height: 32),
+              // Skeleton for songs list
+              Expanded(
+                child: ListView.builder(
+                  itemCount: 5,
+                  itemBuilder: (_, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: SkeletonSongItem(index: index),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 

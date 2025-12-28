@@ -342,7 +342,14 @@ class SkeletonTopOfWeekGrid extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SkeletonLoader(width: 140, height: 20, borderRadius: 4),
+        const Text(
+          'Top of this week',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 16),
         GridView.builder(
           shrinkWrap: true,

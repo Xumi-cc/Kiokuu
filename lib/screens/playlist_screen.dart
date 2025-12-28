@@ -22,6 +22,7 @@ import '../services/offline_storage_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'artist_profile_screen.dart';
 import '../services/analytics_service.dart';
+import '../widgets/skeleton_loader.dart';
 
 /// Full-screen playlist library that shows all user playlists
 class PlaylistLibraryScreen extends StatefulWidget {
@@ -701,9 +702,60 @@ class _PlaylistLibraryScreenState extends State<PlaylistLibraryScreen>
 
   Widget _buildContent() {
     if (_isLoading) {
-      return const SliverFillRemaining(
-        child: Center(child: CircularProgressIndicator(color: Colors.white)),
-      );
+      // Show skeleton matching current view mode (list by default)
+      if (_isGridView) {
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => const SkeletonPlaylistGridCard(),
+              childCount: 6,
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.75,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+          ),
+        );
+      } else {
+        // List view skeleton (default)
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  // 56x56 cover skeleton
+                  const SkeletonLoader(width: 56, height: 56, borderRadius: 4),
+                  const SizedBox(width: 16),
+                  // Title and subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonLoader(
+                          width: 120 + (index * 20) % 60,
+                          height: 14,
+                          borderRadius: 4,
+                        ),
+                        const SizedBox(height: 6),
+                        SkeletonLoader(
+                          width: 80 + (index * 10) % 40,
+                          height: 12,
+                          borderRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            childCount: 8,
+          ),
+        );
+      }
     }
 
     final items = _getFilteredItems();
@@ -2746,6 +2798,49 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 
+  /// Build skeleton loading state for playlist detail
+  Widget _buildPlaylistDetailSkeleton() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Header skeleton
+          const SizedBox(height: 40),
+          // Playlist cover skeleton
+          const SkeletonLoader(width: 180, height: 180, borderRadius: 12),
+          const SizedBox(height: 24),
+          // Title skeleton
+          const SkeletonLoader(width: 200, height: 24, borderRadius: 4),
+          const SizedBox(height: 8),
+          // Subtitle skeleton
+          const SkeletonLoader(width: 140, height: 14, borderRadius: 4),
+          const SizedBox(height: 24),
+          // Action buttons skeleton
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              SkeletonLoader(width: 80, height: 36, borderRadius: 18),
+              SizedBox(width: 16),
+              SkeletonLoader(width: 48, height: 48, isCircle: true),
+              SizedBox(width: 16),
+              SkeletonLoader(width: 80, height: 36, borderRadius: 18),
+            ],
+          ),
+          const SizedBox(height: 32),
+          // Song list skeleton
+          ...List.generate(
+            6,
+            (index) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SkeletonSongItem(index: index),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final songs = _playlist?.songs ?? [];
@@ -2754,7 +2849,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     // Desktop / Embedded Implementation
     if (!isMobile || widget.isEmbedded) {
       final content = _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? _buildPlaylistDetailSkeleton()
           : _playlist == null
           ? const Center(
               child: Text(
@@ -2785,9 +2880,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return Scaffold(
         key: const ValueKey('mobile_playlist_loading'),
         backgroundColor: Colors.black,
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
+        body: SafeArea(child: _buildPlaylistDetailSkeleton()),
       );
     }
 

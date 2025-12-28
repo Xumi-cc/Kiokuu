@@ -883,6 +883,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Pull-to-refresh handler that resets loading states to show skeletons
+  Future<void> _onPullToRefresh() async {
+    // Reset loading states to show skeleton animations
+    setState(() {
+      _isLoading = true;
+      _isFriendsLoading = true;
+      _isAnalyticsLoading = true;
+      _isPlaylistsLoading = true;
+    });
+
+    // Refetch all data
+    await Future.wait([
+      _loadData(),
+      _loadFriendsActivity(),
+      _loadAnalyticsData(),
+      _loadSidebarPlaylists(),
+    ]);
+  }
+
   Future<void> _loadAnalyticsData() async {
     try {
       // Load all analytics data in parallel
@@ -1626,60 +1645,135 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
 
-                          // Content
-                          CustomScrollView(
-                            slivers: [
-                              // Header
-                              SliverToBoxAdapter(
-                                child: _buildHeader(isLargeScreen),
-                              ),
+                          // Content - wrapped with RefreshIndicator for mobile
+                          !isLargeScreen
+                              ? RefreshIndicator(
+                                  onRefresh: _onPullToRefresh,
+                                  color: const Color(0xFF1DB954),
+                                  backgroundColor: Colors.grey[900],
+                                  child: CustomScrollView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    slivers: [
+                                      // Header
+                                      SliverToBoxAdapter(
+                                        child: _buildHeader(isLargeScreen),
+                                      ),
 
-                              // Sections
-                              SliverPadding(
-                                padding: const EdgeInsets.only(
-                                  left: 24.0,
-                                  right: 24.0,
-                                  bottom: 24.0,
-                                ),
-                                sliver: SliverList(
-                                  delegate: SliverChildListDelegate([
-                                    // Hero Section (Highlights)
-                                    _buildHeroSection(),
+                                      // Sections
+                                      SliverPadding(
+                                        padding: const EdgeInsets.only(
+                                          left: 24.0,
+                                          right: 24.0,
+                                          bottom: 24.0,
+                                        ),
+                                        sliver: SliverList(
+                                          delegate: SliverChildListDelegate([
+                                            // Hero Section (Highlights)
+                                            _buildHeroSection(),
 
-                                    if (!MediaQuery.of(context).size.width
-                                            .clamp(0, double.infinity)
-                                            .isInfinite &&
-                                        MediaQuery.of(context).size.width <
-                                            800) ...[
-                                      const SizedBox(height: 16),
-                                      _buildTopOfWeek(),
-                                      const SizedBox(height: 32),
-                                      _buildPlaylistsForYou(),
+                                            if (!MediaQuery.of(context)
+                                                    .size
+                                                    .width
+                                                    .clamp(0, double.infinity)
+                                                    .isInfinite &&
+                                                MediaQuery.of(
+                                                      context,
+                                                    ).size.width <
+                                                    800) ...[
+                                              const SizedBox(height: 16),
+                                              _buildTopOfWeek(),
+                                              const SizedBox(height: 32),
+                                              _buildPlaylistsForYou(),
+                                            ],
+
+                                            const SizedBox(height: 32),
+
+                                            if (MediaQuery.of(
+                                                  context,
+                                                ).size.width >
+                                                800) ...[
+                                              // User's Playlists (Desktop Only)
+                                              _buildSectionTitle(
+                                                'Your Playlists',
+                                              ),
+                                              const SizedBox(height: 16),
+                                              _buildHorizontalGrid(),
+                                              const SizedBox(height: 32),
+                                            ],
+
+                                            // Liked Songs (Actual Data)
+                                            /* Split Section: Liked Songs & Recently Played */
+                                            _buildSplitSection(),
+                                          ]),
+                                        ),
+                                      ),
+
+                                      const SliverPadding(
+                                        padding: EdgeInsets.only(bottom: 120),
+                                      ),
                                     ],
+                                  ),
+                                )
+                              : CustomScrollView(
+                                  slivers: [
+                                    // Header
+                                    SliverToBoxAdapter(
+                                      child: _buildHeader(isLargeScreen),
+                                    ),
 
-                                    const SizedBox(height: 32),
+                                    // Sections
+                                    SliverPadding(
+                                      padding: const EdgeInsets.only(
+                                        left: 24.0,
+                                        right: 24.0,
+                                        bottom: 24.0,
+                                      ),
+                                      sliver: SliverList(
+                                        delegate: SliverChildListDelegate([
+                                          // Hero Section (Highlights)
+                                          _buildHeroSection(),
 
-                                    if (MediaQuery.of(context).size.width >
-                                        800) ...[
-                                      // User's Playlists (Desktop Only)
-                                      _buildSectionTitle('Your Playlists'),
-                                      const SizedBox(height: 16),
-                                      _buildHorizontalGrid(),
-                                      const SizedBox(height: 32),
-                                    ],
+                                          if (!MediaQuery.of(context).size.width
+                                                  .clamp(0, double.infinity)
+                                                  .isInfinite &&
+                                              MediaQuery.of(
+                                                    context,
+                                                  ).size.width <
+                                                  800) ...[
+                                            const SizedBox(height: 16),
+                                            _buildTopOfWeek(),
+                                            const SizedBox(height: 32),
+                                            _buildPlaylistsForYou(),
+                                          ],
 
-                                    // Liked Songs (Actual Data)
-                                    /* Split Section: Liked Songs & Recently Played */
-                                    _buildSplitSection(),
-                                  ]),
+                                          const SizedBox(height: 32),
+
+                                          if (MediaQuery.of(
+                                                context,
+                                              ).size.width >
+                                              800) ...[
+                                            // User's Playlists (Desktop Only)
+                                            _buildSectionTitle(
+                                              'Your Playlists',
+                                            ),
+                                            const SizedBox(height: 16),
+                                            _buildHorizontalGrid(),
+                                            const SizedBox(height: 32),
+                                          ],
+
+                                          // Liked Songs (Actual Data)
+                                          /* Split Section: Liked Songs & Recently Played */
+                                          _buildSplitSection(),
+                                        ]),
+                                      ),
+                                    ),
+
+                                    const SliverPadding(
+                                      padding: EdgeInsets.only(bottom: 120),
+                                    ),
+                                  ],
                                 ),
-                              ),
-
-                              const SliverPadding(
-                                padding: EdgeInsets.only(bottom: 120),
-                              ),
-                            ],
-                          ),
                         ], // Close Stack children
                       ), // Close Stack
               ), // Close Expanded
@@ -3488,13 +3582,15 @@ class _HomeScreenState extends State<HomeScreen> {
               tooltip: 'Search',
             ),
 
-          IconButton(
-            onPressed: _loadData,
-            icon: const Icon(Icons.refresh),
-            color: Colors.white,
-            tooltip: 'Refresh',
-            iconSize: isLargeScreen ? 24 : 22,
-          ),
+          // Desktop only: Refresh button (mobile uses pull-to-refresh)
+          if (isLargeScreen)
+            IconButton(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh),
+              color: Colors.white,
+              tooltip: 'Refresh',
+              iconSize: 24,
+            ),
 
           GestureDetector(
             onTap: () {
@@ -4075,12 +4171,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildEmptyState() {
     return Center(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 40),
-          Icon(Icons.music_off_rounded, size: 60, color: Colors.grey[800]),
-          const SizedBox(height: 16),
+          Icon(Icons.music_off_rounded, size: 48, color: Colors.grey[600]),
+          const SizedBox(height: 12),
           Text('No liked songs yet', style: TextStyle(color: Colors.grey[400])),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           OutlinedButton(
             onPressed: _showUploadDialog,
             style: OutlinedButton.styleFrom(
@@ -4186,6 +4282,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Container(
                 height: sectionHeight,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF181818),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -4210,6 +4311,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Container(
                 height: sectionHeight,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF181818),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -4238,42 +4344,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRecentlyPlayedEmptyState() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.headphones, size: 48, color: Colors.grey[600]),
-            const SizedBox(height: 12),
-            Text(
-              'Play some songs to see your\nmost played tracks here!',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[400]),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.headphones, size: 48, color: Colors.grey[600]),
+          const SizedBox(height: 12),
+          Text(
+            'Play some songs to see your\nmost played tracks here!',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[400]),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: () {
+              setState(() => _isAnalyticsLoading = true);
+              _loadAnalyticsData();
+            },
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Refresh'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white70,
+              backgroundColor: Colors.white.withOpacity(0.1),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: () {
-                setState(() => _isAnalyticsLoading = true);
-                _loadAnalyticsData();
-              },
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Refresh'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white70,
-                backgroundColor: Colors.white.withOpacity(0.1),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -5194,16 +5290,51 @@ class _FriendsActivitySectionState extends State<FriendsActivitySection> {
 
   @override
   Widget build(BuildContext context) {
-    // Show loading
+    // Show loading with skeleton animation
     if (widget.isLoading) {
-      return const SizedBox(
-        height: 100,
-        child: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF1DB954),
-            strokeWidth: 2,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(),
+          // Horizontal row of circular avatars (matching actual friends display)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              children: [
+                // Avatar circles - spread across full width
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(
+                    4,
+                    (index) => const SkeletonLoader(
+                      width: 60,
+                      height: 60,
+                      isCircle: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Name labels below avatars
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(
+                    4,
+                    (index) => SizedBox(
+                      width: 60,
+                      child: Center(
+                        child: SkeletonLoader(
+                          width: 35 + (index * 5) % 15,
+                          height: 10,
+                          borderRadius: 4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       );
     }
 

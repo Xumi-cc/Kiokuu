@@ -42,8 +42,12 @@ endif()
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_14)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
-  # GCC-specific warning suppression (Clang doesn't recognize this flag)
+  # GCC-specific warning suppression
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-literal-operator)
+  endif()
+  # Clang-specific warning suppression
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-literal-operator)
   endif()
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
