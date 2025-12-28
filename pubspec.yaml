@@ -153,3 +153,15 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/images/logo_black.png"
   adaptive_icon_background: "#FFFFFF"
   min_sdk_android: 21
+
+# MSIX Configuration for Windows
+msix_config:
+  display_name: Music Cloud
+  publisher_display_name: Music Cloud Team
+  identity_name: com.musiccloud.music_cloud
+  msix_version: 1.0.0.0
+  logo_path: assets/images/logo_black_bg_white.png
+  capabilities: internetClient, musicLibrary
+  languages: en-us
+  architecture: x64
+  install_certificate: false

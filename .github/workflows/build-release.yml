@@ -245,8 +245,8 @@ jobs:
           flutter pub add msix --dev
           flutter pub get
           
-          # Create MSIX
-          dart run msix:create --build-windows false
+          # Create MSIX (skip certificate installation prompt for CI)
+          dart run msix:create --build-windows false --install-certificate false
 
       - name: Package Windows Build
         shell: pwsh
@@ -647,7 +647,7 @@ jobs:
         run: |
           # Install Flutter dependencies
           dnf install -y git curl unzip xz clang cmake ninja-build \
-            gtk3-devel pkg-config mesa-libGL-devel
+            gtk3-devel pkg-config mesa-libGL-devel which
 
           # Download and setup Flutter
           git clone https://github.com/flutter/flutter.git -b stable /opt/flutter
