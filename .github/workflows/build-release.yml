@@ -339,7 +339,7 @@ jobs:
           cat > linux/packaging/deb/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.DEB_PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.com>
+          maintainer: Kiokuu Team <support@kiokuu.app>
           description: A beautiful music streaming and management application
           long_description: |
             Kiokuu is a feature-rich music application that allows you to 
@@ -370,7 +370,7 @@ jobs:
           cat > linux/packaging/rpm/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.com>
+          maintainer: Kiokuu Team <support@kiokuu.app>
           description: A beautiful music streaming and management application
           license: Proprietary
           group: Applications/Multimedia
@@ -459,7 +459,7 @@ jobs:
           Priority: optional
           Architecture: amd64
           Installed-Size: ${INSTALLED_SIZE}
-          Maintainer: Kiokuu Team <support@kiokuu.com>
+          Maintainer: Kiokuu Team <support@kiokuu.app>
           Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
           Homepage: https://github.com/Xumi-cc/Kiokuu
           Description: A beautiful music streaming and management application
@@ -541,7 +541,7 @@ jobs:
           /usr/share/applications/%{name}.desktop
           
           %changelog
-          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.com> - ${VERSION}-1
+          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.app> - ${VERSION}-1
           - Initial release
           SPEC
           

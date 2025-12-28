@@ -210,7 +210,7 @@ Contributions are welcome! Please read our contributing guidelines before submit
 ## Contact
 
 - **Website**: [kiokuu.app](https://kiokuu.app)
-- **Email**: support@kiokuu.com
+- **Email**: support@kiokuu.app
 - **Discord**: [Join our community](https://discord.gg/geHykXBUcz)
 
 ---

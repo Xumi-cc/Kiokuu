@@ -48,3 +48,4 @@ app.*.map.json
 /backend/.env
 release-keystore.jks
 .github/CICD_GUIDE.md
+nginx/music-cloud.conf

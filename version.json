@@ -1,0 +1,14 @@
+{
+    "latest_version": "0.9.1",
+    "minimum_version": "0.9.1",
+    "release_notes": "Initial release of Kiokuu - Your music, everywhere.",
+    "force_update_message": "This update contains critical security fixes. Please update to continue using Kiokuu.",
+    "download_urls": {
+        "android": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-arm64-v8a.apk",
+        "ios": "https://github.com/Xumi-cc/Kiokuu/releases/latest",
+        "windows": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-windows-portable.zip",
+        "macos": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-macos.dmg",
+        "linux": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-x86_64.AppImage"
+    },
+    "changelog_url": "https://github.com/Xumi-cc/Kiokuu/releases/latest"
+}

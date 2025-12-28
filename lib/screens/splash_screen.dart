@@ -5,9 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
 import '../services/import_folder_service.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
 import 'auth_screen.dart';
 import 'home_screen.dart';
 import 'permission_screen.dart';
+import 'force_update_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -101,6 +104,31 @@ class _SplashScreenState extends State<SplashScreen>
       }
     }
 
+    if (!mounted) return;
+
+    // Check for updates (only when online)
+    if (!isOfflineMode) {
+      final updateInfo = await UpdateService().checkForUpdate();
+
+      if (updateInfo != null && mounted) {
+        if (updateInfo.isForced) {
+          // Critical update required - block the app
+          print(
+            '[SplashScreen] Forced update required: ${updateInfo.latestVersion}',
+          );
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => ForceUpdateScreen(updateInfo: updateInfo),
+            ),
+          );
+          return;
+        } else {
+          // Optional update available - show dialog after navigation
+          _pendingUpdateInfo = updateInfo;
+        }
+      }
+    }
+
     if (mounted) {
       if (isValidSession) {
         Navigator.of(context).pushReplacement(
@@ -108,6 +136,15 @@ class _SplashScreenState extends State<SplashScreen>
             builder: (_) => HomeScreen(isOfflineMode: isOfflineMode),
           ),
         );
+
+        // Show optional update dialog after a short delay
+        if (_pendingUpdateInfo != null) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted && _pendingUpdateInfo != null) {
+              _showOptionalUpdateDialog(_pendingUpdateInfo!);
+            }
+          });
+        }
       } else {
         // Token invalid or missing - go to auth screen
         Navigator.of(context).pushReplacement(
@@ -115,6 +152,13 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
     }
+  }
+
+  UpdateInfo? _pendingUpdateInfo;
+
+  void _showOptionalUpdateDialog(UpdateInfo updateInfo) {
+    final ctx = Navigator.of(context).context;
+    UpdateDialog.show(ctx, updateInfo);
   }
 
   @override

@@ -29,28 +29,34 @@ class AppConfig {
   static String getShareUrl(String token) => '$shareBaseUrl/$token';
 
   // ============================================================
-  // Download URLs (App Store Links)
+  // Download URLs (App Store Links / GitHub Releases)
   // ============================================================
 
-  /// Android download URL (Play Store or direct APK)
-  static const String androidDownloadUrl =
-      'https://github.com/yourusername/music-cloud/releases/latest/download/music-cloud.apk';
+  /// GitHub repository info
+  static const String githubOwner = 'Xumi-cc';
+  static const String githubRepo = 'Kiokuu';
+  static const String githubReleasesUrl =
+      'https://github.com/$githubOwner/$githubRepo/releases/latest';
 
-  /// iOS download URL (App Store)
+  /// Android download URL (GitHub Releases)
+  static const String androidDownloadUrl =
+      'https://github.com/$githubOwner/$githubRepo/releases/latest';
+
+  /// iOS download URL (App Store - placeholder)
   static const String iosDownloadUrl =
-      'https://apps.apple.com/app/music-cloud/id000000000';
+      'https://apps.apple.com/app/kiokuu/id000000000';
 
   /// Windows download URL
   static const String windowsDownloadUrl =
-      'https://github.com/yourusername/music-cloud/releases/latest/download/music-cloud-windows.exe';
+      'https://github.com/$githubOwner/$githubRepo/releases/latest';
 
   /// macOS download URL
   static const String macosDownloadUrl =
-      'https://github.com/yourusername/music-cloud/releases/latest/download/music-cloud-macos.dmg';
+      'https://github.com/$githubOwner/$githubRepo/releases/latest';
 
   /// Linux download URL
   static const String linuxDownloadUrl =
-      'https://github.com/yourusername/music-cloud/releases/latest/download/music-cloud-linux.AppImage';
+      'https://github.com/$githubOwner/$githubRepo/releases/latest';
 
   // ============================================================
   // Google OAuth Configuration
@@ -69,7 +75,7 @@ class AppConfig {
   // ============================================================
 
   static const String appName = 'KioKuu';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '0.9.1';
 
   // ============================================================
   // Feature Flags
