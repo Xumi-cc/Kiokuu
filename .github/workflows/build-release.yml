@@ -713,6 +713,23 @@ jobs:
           flutter pub get
           flutter build linux --release
 
+      - name: Create Desktop Entry for Flatpak
+        run: |
+          mkdir -p linux/packaging/appimage
+          cat > linux/packaging/appimage/${{ env.PACKAGE_NAME }}.desktop << EOF
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=${{ env.PACKAGE_NAME }}
+          Icon=${{ env.PACKAGE_NAME }}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;AudioVideo;
+          Keywords=music;audio;streaming;player;
+          StartupNotify=true
+          StartupWMClass=${{ env.PACKAGE_NAME }}
+          EOF
+
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
