@@ -13,9 +13,10 @@ on:
 
 env:
   FLUTTER_VERSION: '3.38.5'
-  APP_NAME: 'Music Cloud'
-  PACKAGE_NAME: 'music_cloud'
-  APP_ID: 'com.musiccloud.music_cloud'
+  APP_NAME: 'Kiokuu'
+  PACKAGE_NAME: 'kiokuu'
+  DEB_PACKAGE_NAME: 'kiokuu'  # Debian requires lowercase alphanums and -+. only
+  APP_ID: 'com.kiokuu.app'
 
 jobs:
   # ============================================================================
@@ -336,20 +337,20 @@ jobs:
           mkdir -p linux/packaging/deb
           cat > linux/packaging/deb/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
-          package_name: ${{ env.PACKAGE_NAME }}
-          maintainer: Music Cloud Team <support@musiccloud.app>
+          package_name: ${{ env.DEB_PACKAGE_NAME }}
+          maintainer: Kiokuu Team <support@kiokuu.com>
           description: A beautiful music streaming and management application
           long_description: |
-            Music Cloud is a feature-rich music application that allows you to 
+            Kiokuu is a feature-rich music application that allows you to 
             stream, manage, and enjoy your music collection across all your devices.
-          homepage: https://github.com/yourusername/music-cloud
+          homepage: https://github.com/Xumi-cc/Kiokuu
           section: sound
           priority: optional
           installed_size: 50000
           essential: false
           icon: assets/images/app_icon.png
           postinstall_scripts:
-            - echo "Music Cloud installed successfully"
+            - echo "Kiokuu installed successfully"
           keywords:
             - Music
             - Audio
@@ -368,7 +369,7 @@ jobs:
           cat > linux/packaging/rpm/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.PACKAGE_NAME }}
-          maintainer: Music Cloud Team <support@musiccloud.app>
+          maintainer: Kiokuu Team <support@kiokuu.com>
           description: A beautiful music streaming and management application
           license: Proprietary
           group: Applications/Multimedia
@@ -451,17 +452,17 @@ jobs:
           # Create control file
           INSTALLED_SIZE=$(du -sk deb_root | cut -f1)
           cat > deb_root/DEBIAN/control << CONTROL
-          Package: ${{ env.PACKAGE_NAME }}
+          Package: ${{ env.DEB_PACKAGE_NAME }}
           Version: ${VERSION}
           Section: sound
           Priority: optional
           Architecture: amd64
           Installed-Size: ${INSTALLED_SIZE}
-          Maintainer: Music Cloud Team <support@musiccloud.app>
+          Maintainer: Kiokuu Team <support@kiokuu.com>
           Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
-          Homepage: https://github.com/yourusername/music-cloud
+          Homepage: https://github.com/Xumi-cc/Kiokuu
           Description: A beautiful music streaming and management application
-           Music Cloud is a feature-rich music application that allows you to
+           Kiokuu is a feature-rich music application that allows you to
            stream, manage, and enjoy your music collection across all your devices.
            .
            Features include cloud synchronization, lyrics display, equalizer,
@@ -471,7 +472,7 @@ jobs:
           # Build DEB
           dpkg-deb --build deb_root
           mkdir -p release-artifacts/linux
-          mv deb_root.deb "release-artifacts/linux/${{ env.PACKAGE_NAME }}_${VERSION}_amd64.deb"
+          mv deb_root.deb "release-artifacts/linux/${{ env.DEB_PACKAGE_NAME }}_${VERSION}_amd64.deb"
 
       - name: Build RPM Package
         run: |
@@ -495,13 +496,13 @@ jobs:
           Summary:        A beautiful music streaming and management application
           
           License:        Proprietary
-          URL:            https://github.com/yourusername/music-cloud
+          URL:            https://github.com/Xumi-cc/Kiokuu
           Source0:        %{name}-%{version}.tar.gz
           
           Requires:       gtk3, mpv-libs
           
           %description
-          Music Cloud is a feature-rich music application that allows you to
+          Kiokuu is a feature-rich music application that allows you to
           stream, manage, and enjoy your music collection across all your devices.
           
           %prep
@@ -539,7 +540,7 @@ jobs:
           /usr/share/applications/%{name}.desktop
           
           %changelog
-          * $(date "+%a %b %d %Y") Music Cloud Team <support@musiccloud.app> - ${VERSION}-1
+          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.com> - ${VERSION}-1
           - Initial release
           SPEC
           
@@ -769,7 +770,7 @@ jobs:
           VERSION="${VERSION#v}"
           
           cat > release-notes.md << 'EOF'
-          # 🎵 Music Cloud ${{ github.ref_name }}
+          # 🎵 Kiokuu ${{ github.ref_name }}
           
           ## 📦 Downloads
           
@@ -811,29 +812,29 @@ jobs:
           
           ### Debian/Ubuntu
           ```bash
-          sudo dpkg -i music_cloud_*.deb
+          sudo dpkg -i kiokuu_*.deb
           sudo apt-get install -f  # Install dependencies if needed
           ```
           
           ### Fedora/RHEL
           ```bash
-          sudo dnf install music_cloud-*.rpm
+          sudo dnf install kiokuu-*.rpm
           ```
           
           ### openSUSE
           ```bash
-          sudo zypper install music_cloud-*.rpm
+          sudo zypper install kiokuu-*.rpm
           ```
           
           ### AppImage
           ```bash
-          chmod +x Music_Cloud-*.AppImage
-          ./Music_Cloud-*.AppImage
+          chmod +x Kiokuu-*.AppImage
+          ./Kiokuu-*.AppImage
           ```
           
           ### Flatpak
           ```bash
-          flatpak install music_cloud-*.flatpak
+          flatpak install kiokuu-*.flatpak
           ```
           
           ---
@@ -844,7 +845,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Music Cloud ${{ github.ref_name }}
+          name: Kiokuu ${{ github.ref_name }}
           body_path: release-notes.md
           files: release-assets/*
           draft: true

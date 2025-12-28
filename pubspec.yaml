@@ -156,12 +156,13 @@ flutter_launcher_icons:
 
 # MSIX Configuration for Windows
 msix_config:
-  display_name: Music Cloud
-  publisher_display_name: Music Cloud Team
-  identity_name: com.musiccloud.music_cloud
+  display_name: Kiokuu
+  publisher_display_name: Kiokuu Team
+  identity_name: com.kiokuu.app
   msix_version: 1.0.0.0
   logo_path: assets/images/logo_black_bg_white.png
   capabilities: internetClient, musicLibrary
   languages: en-us
   architecture: x64
   install_certificate: false
+
