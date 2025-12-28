@@ -1,150 +1,220 @@
-# Music Cloud 🎵
+<p align="center">
+  <img src="assets/images/logo_black_bg_white.png" width="120" alt="Kiokuu Logo"/>
+</p>
 
-A beautiful, cross-platform music player built with Flutter featuring a sleek black & white design.
+<h1 align="center">Kiokuu</h1>
 
-## ✨ Features
+<p align="center">
+  <strong>Your Personal Cloud Music Streaming Platform</strong>
+</p>
 
-- **Cross-Platform**: Runs on Android, iOS, Linux, macOS, Windows, and Web
-- **Beautiful UI**: Modern black & white theme with glassmorphic effects and smooth animations
-- **Audio Playback**: Powered by `just_audio` for high-quality audio playback
-- **Playlist Management**: Add, remove, and organize your music
-- **Playback Controls**: Play, pause, skip, shuffle, and repeat
-- **Progress Tracking**: Visual progress bar with seek functionality
-- **Swipe to Delete**: Swipe songs to remove them from the playlist
-- **Responsive Design**: Adapts to different screen sizes
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#screenshots">Screenshots</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#tech-stack">Tech Stack</a> •
+  <a href="#contributing">Contributing</a>
+</p>
 
-## 🎨 Design
+<p align="center">
+  <img src="https://img.shields.io/badge/Flutter-3.38+-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter"/>
+  <img src="https://img.shields.io/badge/Dart-3.10+-0175C2?style=for-the-badge&logo=dart&logoColor=white" alt="Dart"/>
+</p>
 
-The app features a premium black & white aesthetic with:
-
-- Gradient backgrounds and buttons
-- Glassmorphic containers with subtle transparency
-- Smooth micro-animations
-- Animated album art with pulse effects
-- Clean, modern typography using Inter font
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Flutter SDK (3.10.1 or higher)
-- Dart SDK
-
-### Installation
-
-1. Clone the repository
-2. Install dependencies:
-
-```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
-flutter pub get
-```
-
-3. Run the app:
-
-```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
-flutter run -d <device>
-```
-
-Available devices:
-
-- `linux` - Linux desktop
-- `android` - Android device/emulator
-- `ios` - iOS device/simulator
-- `macos` - macOS desktop
-- `windows` - Windows desktop
-- `chrome` - Web browser
-
-## 📱 Usage
-
-1. **Add Music**: Tap the "Add Music" button to select audio files from your device
-2. **Play Songs**: Tap any song in the playlist to start playing
-3. **Control Playback**: Use the player controls to play/pause, skip, shuffle, or repeat
-4. **Seek**: Drag the progress slider to jump to any position in the song
-5. **Remove Songs**: Swipe left on any song to remove it from the playlist
-
-## 🛠️ Tech Stack
-
-- **Framework**: Flutter
-- **State Management**: Provider
-- **Audio Playback**: just_audio
-- **Background Audio**: audio_service
-- **File Picking**: file_picker
-- **Typography**: Google Fonts (Inter)
-
-## 📦 Dependencies
-
-```yaml
-dependencies:
-  just_audio: ^0.9.36
-  audio_service: ^0.18.12
-  file_picker: ^8.0.0+1
-  path_provider: ^2.1.2
-  permission_handler: ^11.3.0
-  provider: ^6.1.1
-  google_fonts: ^6.2.1
-```
-
-## 🎯 Features in Detail
-
-### Player Controls
-
-- **Play/Pause**: Large gradient button with shadow effects
-- **Skip**: Navigate to previous/next songs
-- **Shuffle**: Randomize playback order
-- **Repeat One**: Loop the current song
-
-### Playlist View
-
-- **Visual Indicators**: Current song highlighted with white border
-- **Animated Icons**: Equalizer animation for playing songs
-- **Song Options**: Long-press or tap menu for additional options
-- **Empty State**: Helpful message when playlist is empty
-
-### Now Playing Card
-
-- **Album Art**: Large, rounded artwork display with gradient fallback
-- **Pulse Animation**: Animated effect when music is playing
-- **Song Info**: Title, artist, and album information
-- **Responsive**: Adapts to different screen sizes
-
-## 🔧 Development
-
-### Hot Reload
-
-While the app is running, press `r` in the terminal for hot reload or `R` for hot restart.
-
-### Building for Production
-
-```bash
-# Android
-flutter build apk --release
-
-# iOS
-flutter build ios --release
-
-# Linux
-flutter build linux --release
-
-# Windows
-flutter build windows --release
-
-# macOS
-flutter build macos --release
-
-# Web
-flutter build web --release
-```
-
-## 📝 License
-
-This project is open source and available under the MIT License.
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android"/>
+  <img src="https://img.shields.io/badge/iOS-000000?style=flat-square&logo=ios&logoColor=white" alt="iOS"/>
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux"/>
+  <img src="https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows"/>
+  <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS"/>
+  <img src="https://img.shields.io/badge/Web-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Web"/>
+</p>
 
 ---
 
-Made with ❤️ using Flutter
+## Features
+
+### Music Streaming
+- **Cloud Library** — Upload your music collection and stream from anywhere
+- **High-Quality Playback** — Powered by MediaKit/MPV for lossless audio support
+- **Offline Mode** — Download songs for offline listening with automatic HD upgrades
+- **Background Playback** — Full audio service integration with notification controls
+
+### AI-Powered
+- **Smart Matching** — AI identifies your uploaded songs and fetches metadata automatically
+- **Lyrics Sync** — Synchronized lyrics display with beautiful full-screen visualizations
+
+### Cross-Platform
+- **Native Experience** — Runs on Android, iOS, Linux, Windows, macOS, and Web
+- **Seamless Sync** — Playback state syncs across all your devices in real-time
+- **Responsive Design** — Adapts beautifully from mobile to desktop
+
+### Social
+- **Friend Activity** — See what your friends are listening to
+- **Shared Playlists** — Collaborate on playlists with friends
+- **Listen Together** — Sync playback with friends in real-time
+
+### Premium Features
+- **Unlimited Uploads** — No storage limits for premium users
+- **Priority Streaming** — Dedicated CDN for faster streams
+- **Early Access** — Get new features before everyone else
+
+---
+
+## Design Philosophy
+
+Kiokuu features a stunning **monochromatic design** with:
+
+- Elegant dark theme with glassmorphic elements
+- Smooth micro-animations and transitions
+- Dynamic backgrounds that adapt to album artwork
+- Fluid, gesture-driven navigation
+
+---
+
+## Installation
+
+### Prerequisites
+
+- **Flutter SDK** 3.38.5 or higher
+- **Dart SDK** 3.10.1 or higher
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Xumi-cc/Kiokuu.git
+cd Kiokuu
+
+# Install dependencies
+flutter pub get
+
+# Run the app
+flutter run -d <device>
+```
+
+**Available devices:**
+
+| Device | Command |
+|--------|---------|
+| Android | `flutter run -d android` |
+| iOS | `flutter run -d ios` |
+| Linux | `flutter run -d linux` |
+| Windows | `flutter run -d windows` |
+| macOS | `flutter run -d macos` |
+| Web | `flutter run -d chrome` |
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Framework | Flutter 3.38+ |
+| Language | Dart 3.10+ |
+| State Management | Provider |
+| Audio Engine | MediaKit (MPV) |
+| Background Audio | audio_service + MPRIS |
+| Networking | HTTP + WebSocket |
+| Local Storage | flutter_secure_storage |
+| Authentication | Google Sign-In, Discord OAuth |
+
+---
+
+## Project Structure
+
+```
+kiokuu/
+├── lib/
+│   ├── screens/           # UI screens
+│   ├── providers/         # State management
+│   ├── services/          # API & audio services
+│   ├── models/            # Data models
+│   └── widgets/           # Reusable components
+│
+├── assets/                # Static assets
+├── android/               # Android-specific code
+├── ios/                   # iOS-specific code
+├── linux/                 # Linux-specific code
+├── windows/               # Windows-specific code
+├── macos/                 # macOS-specific code
+└── web/                   # Web-specific code
+```
+
+---
+
+## Building for Release
+
+### Android
+```bash
+flutter build apk --release --split-per-abi
+# or for Play Store
+flutter build appbundle --release
+```
+
+### iOS
+```bash
+flutter build ios --release
+```
+
+### Linux
+```bash
+flutter build linux --release
+```
+
+### Windows
+```bash
+flutter build windows --release
+```
+
+### macOS
+```bash
+flutter build macos --release
+```
+
+### Web
+```bash
+flutter build web --release
+```
+
+---
+
+## Authentication
+
+Kiokuu supports multiple authentication methods:
+
+- **Email/Password** — Traditional authentication
+- **Google Sign-In** — OAuth 2.0 integration
+- **Discord** — OAuth 2.0 with deep linking support
+
+---
+
+## License
+
+This project is proprietary software. All rights reserved.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting a pull request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## Contact
+
+- **Website**: [kiokuu.com](https://kiokuu.app)
+- **Email**: support@kiokuu.com
+- **Discord**: [Join our community](https://discord.gg/geHykXBUcz)
+
+---
+
+<p align="center">
+  Made with care by <a href="https://github.com/Xumi-cc">Xumi Labs</a>
+</p>
