@@ -703,7 +703,7 @@ jobs:
                 - type: file
                   path: linux/packaging/appimage/${{ env.PACKAGE_NAME }}.desktop
                 - type: file  
-                  path: assets/images/app_icon.png
+                  path: assets/images/logo_black_bg_white.png
                   dest-filename: ${{ env.PACKAGE_NAME }}.png
           MANIFEST
 
