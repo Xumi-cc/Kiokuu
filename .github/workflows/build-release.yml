@@ -639,7 +639,7 @@ jobs:
     name: Build Flatpak
     runs-on: ubuntu-22.04
     container:
-      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-24.08
       options: --privileged
     steps:
       - name: Checkout repository
@@ -662,9 +662,9 @@ jobs:
           cat > ${{ env.APP_ID }}.yml << 'MANIFEST'
           app-id: ${{ env.APP_ID }}
           runtime: org.freedesktop.Platform
-          runtime-version: '23.08'
+          runtime-version: '24.08'
           sdk: org.freedesktop.Sdk
-          command: music_cloud
+          command: kiokuu
           finish-args:
             - --share=ipc
             - --socket=fallback-x11
@@ -676,7 +676,7 @@ jobs:
             - --filesystem=xdg-download:ro
             - --talk-name=org.freedesktop.Notifications
             - --talk-name=org.kde.StatusNotifierWatcher
-            - --own-name=org.mpris.MediaPlayer2.music_cloud
+            - --own-name=org.mpris.MediaPlayer2.kiokuu
           modules:
             - name: mpv
               buildsystem: meson
@@ -689,10 +689,10 @@ jobs:
                 - type: archive
                   url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.37.0.tar.gz
                   sha256: 1d2d4adbaf048a2fa6ee134575032c4b2dad9a7efafd5b3e69b88db935afaddf
-            - name: music_cloud
+            - name: kiokuu
               buildsystem: simple
               build-commands:
-                - install -Dm755 bundle/music_cloud /app/bin/music_cloud
+                - install -Dm755 bundle/${{ env.PACKAGE_NAME }} /app/bin/${{ env.PACKAGE_NAME }}
                 - cp -r bundle/lib /app/lib
                 - cp -r bundle/data /app/data
                 - install -Dm644 ${{ env.PACKAGE_NAME }}.desktop /app/share/applications/${{ env.APP_ID }}.desktop
