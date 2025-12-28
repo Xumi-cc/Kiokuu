@@ -6,7 +6,7 @@ class AppConfig {
   // ============================================================
 
   /// Backend API base URL
-  static const String apiBaseUrl = 'https://mcloud.xumi.cc';
+  static const String apiBaseUrl = 'https://api.kiokuu.app';
 
   /// WebSocket URL (derived from API URL)
   static String get wsBaseUrl {

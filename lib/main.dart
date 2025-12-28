@@ -133,8 +133,8 @@ String? _extractShareToken(Uri uri) {
   if (uri.scheme == 'musiccloud' && uri.path.startsWith('/share/')) {
     return uri.path.replaceFirst('/share/', '');
   }
-  // Handle https://mcloud.xumi.cc/s/TOKEN
-  if (uri.host == 'mcloud.xumi.cc' && uri.path.startsWith('/s/')) {
+  // Handle https://api.kiokuu.app/s/TOKEN
+  if (uri.host == 'api.kiokuu.app' && uri.path.startsWith('/s/')) {
     return uri.path.replaceFirst('/s/', '');
   }
   return null;
