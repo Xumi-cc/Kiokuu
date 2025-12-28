@@ -1,0 +1,853 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+env:
+  FLUTTER_VERSION: '3.32.2'
+  APP_NAME: 'Music Cloud'
+  PACKAGE_NAME: 'music_cloud'
+  APP_ID: 'com.musiccloud.music_cloud'
+
+jobs:
+  # ============================================================================
+  # ANDROID BUILD - Split APKs for reduced size
+  # ============================================================================
+  build-android:
+    name: Build Android (Split APKs)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release-keystore.jks
+          fi
+
+      - name: Create key.properties
+        env:
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEY_ALIAS" ]; then
+            cat > android/key.properties << EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=release-keystore.jks
+          EOF
+          fi
+
+      # Build split APKs per ABI for reduced APK size
+      - name: Build Split APKs (per ABI)
+        run: flutter build apk --release --split-per-abi
+
+      # Also build App Bundle for Play Store
+      - name: Build App Bundle (AAB)
+        run: flutter build appbundle --release
+
+      - name: Rename artifacts
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+          
+          mkdir -p release-artifacts/android
+          
+          # Rename split APKs
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            if [ -f "$apk" ]; then
+              abi=$(basename "$apk" | sed 's/app-\(.*\)-release.apk/\1/')
+              cp "$apk" "release-artifacts/android/${PACKAGE_NAME}-${VERSION}-${abi}.apk"
+            fi
+          done
+          
+          # Copy universal APK if exists
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            cp "build/app/outputs/flutter-apk/app-release.apk" \
+               "release-artifacts/android/${PACKAGE_NAME}-${VERSION}-universal.apk"
+          fi
+          
+          # Copy AAB
+          cp build/app/outputs/bundle/release/app-release.aab \
+             "release-artifacts/android/${PACKAGE_NAME}-${VERSION}.aab"
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: release-artifacts/android/
+          retention-days: 30
+
+  # ============================================================================
+  # iOS BUILD
+  # ============================================================================
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          pod install
+
+      - name: Build iOS (No Code Signing for CI)
+        run: |
+          flutter build ios --release --no-codesign
+
+      - name: Create IPA
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p release-artifacts/ios
+          
+          # Create Payload directory and copy app
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          
+          # Create IPA
+          zip -r "release-artifacts/ios/${PACKAGE_NAME}-${VERSION}-ios.ipa" Payload
+          rm -rf Payload
+
+      - name: Upload iOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: release-artifacts/ios/
+          retention-days: 30
+
+  # ============================================================================
+  # macOS BUILD
+  # ============================================================================
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd macos
+          pod install || true  # Some projects don't use pods
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p release-artifacts/macos
+          
+          # Install create-dmg
+          brew install create-dmg || true
+          
+          # Create DMG
+          create-dmg \
+            --volname "${APP_NAME}" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 400 185 \
+            "release-artifacts/macos/${PACKAGE_NAME}-${VERSION}-macos.dmg" \
+            "build/macos/Build/Products/Release/${APP_NAME}.app" || \
+          # Fallback: create zip if DMG fails
+          (cd "build/macos/Build/Products/Release" && \
+           zip -r "../../../../../release-artifacts/macos/${PACKAGE_NAME}-${VERSION}-macos.zip" "${APP_NAME}.app")
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: release-artifacts/macos/
+          retention-days: 30
+
+  # ============================================================================
+  # WINDOWS BUILD
+  # ============================================================================
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create MSIX Package
+        run: |
+          # Install MSIX packaging tool
+          flutter pub add msix --dev
+          flutter pub get
+          
+          # Create MSIX
+          dart run msix:create --build-windows false
+
+      - name: Package Windows Build
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.event.inputs.version || github.ref_name }}"
+          $VERSION = $VERSION -replace '^v', ''
+          
+          New-Item -ItemType Directory -Force -Path "release-artifacts/windows"
+          
+          # Copy MSIX if exists
+          $msixPath = Get-ChildItem -Path "build/windows" -Recurse -Filter "*.msix" | Select-Object -First 1
+          if ($msixPath) {
+            Copy-Item $msixPath.FullName "release-artifacts/windows/${{ env.PACKAGE_NAME }}-$VERSION-windows.msix"
+          }
+          
+          # Create ZIP of the release folder
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" `
+            -DestinationPath "release-artifacts/windows/${{ env.PACKAGE_NAME }}-$VERSION-windows-portable.zip"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: release-artifacts/windows/
+          retention-days: 30
+
+  # ============================================================================
+  # LINUX BUILD - DEB, RPM, AppImage
+  # ============================================================================
+  build-linux:
+    name: Build Linux (DEB, RPM, AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build libgtk-3-dev \
+            libblkid-dev liblzma-dev \
+            rpm patchelf \
+            libfuse2 \
+            libmpv-dev mpv
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Install flutter_distributor
+        run: dart pub global activate flutter_distributor
+
+      - name: Create Packaging Configuration
+        run: |
+          mkdir -p dist
+          cat > dist/distribute_options.yaml << 'EOF'
+          output: build/dist
+          releases:
+            - name: linux
+              jobs:
+                - name: linux-deb
+                  package:
+                    platform: linux
+                    target: deb
+                - name: linux-rpm
+                  package:
+                    platform: linux
+                    target: rpm
+                - name: linux-appimage
+                  package:
+                    platform: linux
+                    target: appimage
+          EOF
+
+      - name: Create make_config for DEB
+        run: |
+          mkdir -p linux/packaging/deb
+          cat > linux/packaging/deb/make_config.yaml << EOF
+          display_name: ${{ env.APP_NAME }}
+          package_name: ${{ env.PACKAGE_NAME }}
+          maintainer: Music Cloud Team <support@musiccloud.app>
+          description: A beautiful music streaming and management application
+          long_description: |
+            Music Cloud is a feature-rich music application that allows you to 
+            stream, manage, and enjoy your music collection across all your devices.
+          homepage: https://github.com/yourusername/music-cloud
+          section: sound
+          priority: optional
+          installed_size: 50000
+          essential: false
+          icon: assets/images/app_icon.png
+          postinstall_scripts:
+            - echo "Music Cloud installed successfully"
+          keywords:
+            - Music
+            - Audio
+            - Streaming
+            - Player
+          categories:
+            - Audio
+            - Music
+            - Player
+          startup_notify: true
+          EOF
+
+      - name: Create make_config for RPM
+        run: |
+          mkdir -p linux/packaging/rpm
+          cat > linux/packaging/rpm/make_config.yaml << EOF
+          display_name: ${{ env.APP_NAME }}
+          package_name: ${{ env.PACKAGE_NAME }}
+          maintainer: Music Cloud Team <support@musiccloud.app>
+          description: A beautiful music streaming and management application
+          license: Proprietary
+          group: Applications/Multimedia
+          icon: assets/images/app_icon.png
+          EOF
+
+      - name: Create make_config for AppImage
+        run: |
+          mkdir -p linux/packaging/appimage
+          cat > linux/packaging/appimage/make_config.yaml << EOF
+          display_name: ${{ env.APP_NAME }}
+          package_name: ${{ env.PACKAGE_NAME }}
+          icon: assets/images/app_icon.png
+          keywords:
+            - Music
+            - Audio
+            - Streaming
+          categories:
+            - Audio
+            - Music
+          startup_notify: true
+          EOF
+
+      - name: Create Desktop Entry
+        run: |
+          mkdir -p linux/packaging/appimage
+          cat > linux/packaging/appimage/${{ env.PACKAGE_NAME }}.desktop << EOF
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=${{ env.PACKAGE_NAME }}
+          Icon=${{ env.PACKAGE_NAME }}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;
+          Keywords=music;audio;streaming;player;
+          StartupNotify=true
+          StartupWMClass=${{ env.PACKAGE_NAME }}
+          EOF
+
+      - name: Build DEB Package
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Create DEB package structure
+          mkdir -p deb_root/DEBIAN
+          mkdir -p deb_root/usr/bin
+          mkdir -p deb_root/usr/lib/${{ env.PACKAGE_NAME }}
+          mkdir -p deb_root/usr/share/applications
+          mkdir -p deb_root/usr/share/icons/hicolor/256x256/apps
+          mkdir -p deb_root/usr/share/pixmaps
+          
+          # Copy application files
+          cp -r build/linux/x64/release/bundle/* deb_root/usr/lib/${{ env.PACKAGE_NAME }}/
+          
+          # Create launcher script
+          cat > deb_root/usr/bin/${{ env.PACKAGE_NAME }} << 'LAUNCHER'
+          #!/bin/bash
+          cd /usr/lib/${{ env.PACKAGE_NAME }}
+          ./${{ env.PACKAGE_NAME }} "$@"
+          LAUNCHER
+          chmod +x deb_root/usr/bin/${{ env.PACKAGE_NAME }}
+          
+          # Create desktop entry
+          cat > deb_root/usr/share/applications/${{ env.PACKAGE_NAME }}.desktop << DESKTOP
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=${{ env.PACKAGE_NAME }}
+          Icon=${{ env.PACKAGE_NAME }}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;AudioVideo;
+          Keywords=music;audio;streaming;player;cloud;
+          StartupNotify=true
+          StartupWMClass=${{ env.PACKAGE_NAME }}
+          DESKTOP
+          
+          # Create control file
+          INSTALLED_SIZE=$(du -sk deb_root | cut -f1)
+          cat > deb_root/DEBIAN/control << CONTROL
+          Package: ${{ env.PACKAGE_NAME }}
+          Version: ${VERSION}
+          Section: sound
+          Priority: optional
+          Architecture: amd64
+          Installed-Size: ${INSTALLED_SIZE}
+          Maintainer: Music Cloud Team <support@musiccloud.app>
+          Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
+          Homepage: https://github.com/yourusername/music-cloud
+          Description: A beautiful music streaming and management application
+           Music Cloud is a feature-rich music application that allows you to
+           stream, manage, and enjoy your music collection across all your devices.
+           .
+           Features include cloud synchronization, lyrics display, equalizer,
+           and cross-platform support.
+          CONTROL
+          
+          # Build DEB
+          dpkg-deb --build deb_root
+          mkdir -p release-artifacts/linux
+          mv deb_root.deb "release-artifacts/linux/${{ env.PACKAGE_NAME }}_${VERSION}_amd64.deb"
+
+      - name: Build RPM Package
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Create RPM build directory structure
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          
+          # Create source tarball
+          mkdir -p "${{ env.PACKAGE_NAME }}-${VERSION}"
+          cp -r build/linux/x64/release/bundle/* "${{ env.PACKAGE_NAME }}-${VERSION}/"
+          tar czf "rpmbuild/SOURCES/${{ env.PACKAGE_NAME }}-${VERSION}.tar.gz" "${{ env.PACKAGE_NAME }}-${VERSION}"
+          rm -rf "${{ env.PACKAGE_NAME }}-${VERSION}"
+          
+          # Create spec file
+          cat > rpmbuild/SPECS/${{ env.PACKAGE_NAME }}.spec << SPEC
+          Name:           ${{ env.PACKAGE_NAME }}
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        A beautiful music streaming and management application
+          
+          License:        Proprietary
+          URL:            https://github.com/yourusername/music-cloud
+          Source0:        %{name}-%{version}.tar.gz
+          
+          Requires:       gtk3, mpv-libs
+          
+          %description
+          Music Cloud is a feature-rich music application that allows you to
+          stream, manage, and enjoy your music collection across all your devices.
+          
+          %prep
+          %autosetup
+          
+          %install
+          mkdir -p %{buildroot}/usr/lib/%{name}
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          
+          cp -r * %{buildroot}/usr/lib/%{name}/
+          
+          cat > %{buildroot}/usr/bin/%{name} << 'LAUNCHER'
+          #!/bin/bash
+          cd /usr/lib/%{name}
+          ./%{name} "\$@"
+          LAUNCHER
+          chmod +x %{buildroot}/usr/bin/%{name}
+          
+          cat > %{buildroot}/usr/share/applications/%{name}.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=%{name}
+          Icon=%{name}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;AudioVideo;
+          StartupNotify=true
+          DESKTOP
+          
+          %files
+          /usr/lib/%{name}
+          /usr/bin/%{name}
+          /usr/share/applications/%{name}.desktop
+          
+          %changelog
+          * $(date "+%a %b %d %Y") Music Cloud Team <support@musiccloud.app> - ${VERSION}-1
+          - Initial release
+          SPEC
+          
+          # Build RPM
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/${{ env.PACKAGE_NAME }}.spec
+          
+          # Copy RPM to release artifacts
+          find rpmbuild/RPMS -name "*.rpm" -exec cp {} release-artifacts/linux/ \;
+
+      - name: Build AppImage
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Download AppImage tools
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # Copy application files
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/lib/
+          
+          # Create launcher
+          cat > AppDir/usr/bin/${{ env.PACKAGE_NAME }} << 'LAUNCHER'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export LD_LIBRARY_PATH="${HERE}/../lib:${LD_LIBRARY_PATH}"
+          cd "${HERE}/../lib"
+          ./${{ env.PACKAGE_NAME }} "$@"
+          LAUNCHER
+          chmod +x AppDir/usr/bin/${{ env.PACKAGE_NAME }}
+          
+          # Create AppRun
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "${HERE}/usr/bin/${{ env.PACKAGE_NAME }}" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+          
+          # Create desktop file
+          cat > AppDir/${{ env.PACKAGE_NAME }}.desktop << DESKTOP
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=${{ env.PACKAGE_NAME }}
+          Icon=${{ env.PACKAGE_NAME }}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;AudioVideo;
+          Keywords=music;audio;streaming;player;cloud;
+          StartupNotify=true
+          StartupWMClass=${{ env.PACKAGE_NAME }}
+          DESKTOP
+          cp AppDir/${{ env.PACKAGE_NAME }}.desktop AppDir/usr/share/applications/
+          
+          # Create icon (placeholder - replace with actual icon)
+          if [ -f "assets/images/app_icon.png" ]; then
+            cp assets/images/app_icon.png AppDir/${{ env.PACKAGE_NAME }}.png
+            cp assets/images/app_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.PACKAGE_NAME }}.png
+          else
+            # Create a placeholder icon
+            convert -size 256x256 xc:#6366f1 AppDir/${{ env.PACKAGE_NAME }}.png 2>/dev/null || \
+            echo "No icon found, using placeholder"
+          fi
+          
+          # Build AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir \
+            "release-artifacts/linux/${{ env.PACKAGE_NAME }}-${VERSION}-x86_64.AppImage"
+
+      - name: Create tar.gz Archive
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          cd build/linux/x64/release/bundle
+          tar czf "../../../../../release-artifacts/linux/${{ env.PACKAGE_NAME }}-${VERSION}-linux-x64.tar.gz" .
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: release-artifacts/linux/
+          retention-days: 30
+
+  # ============================================================================
+  # FLATPAK BUILD
+  # ============================================================================
+  build-flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-22.04
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      options: --privileged
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter in Container
+        run: |
+          # Install Flutter dependencies
+          dnf install -y git curl unzip xz clang cmake ninja-build \
+            gtk3-devel pkg-config mesa-libGL-devel
+
+          # Download and setup Flutter
+          git clone https://github.com/flutter/flutter.git -b stable /opt/flutter
+          export PATH="/opt/flutter/bin:$PATH"
+          flutter doctor
+          flutter config --no-analytics
+
+      - name: Create Flatpak Manifest
+        run: |
+          cat > ${{ env.APP_ID }}.yml << 'MANIFEST'
+          app-id: ${{ env.APP_ID }}
+          runtime: org.freedesktop.Platform
+          runtime-version: '23.08'
+          sdk: org.freedesktop.Sdk
+          command: music_cloud
+          finish-args:
+            - --share=ipc
+            - --socket=fallback-x11
+            - --socket=wayland
+            - --socket=pulseaudio
+            - --device=dri
+            - --share=network
+            - --filesystem=xdg-music:ro
+            - --filesystem=xdg-download:ro
+            - --talk-name=org.freedesktop.Notifications
+            - --talk-name=org.kde.StatusNotifierWatcher
+            - --own-name=org.mpris.MediaPlayer2.music_cloud
+          modules:
+            - name: mpv
+              buildsystem: meson
+              config-opts:
+                - -Dlibmpv=true
+                - -Dlua=disabled
+                - -Djavascript=disabled
+                - -Dcplayer=false
+              sources:
+                - type: archive
+                  url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.37.0.tar.gz
+                  sha256: 1d2d4adbaf048a2fa6ee134575032c4b2dad9a7efafd5b3e69b88db935afaddf
+            - name: music_cloud
+              buildsystem: simple
+              build-commands:
+                - install -Dm755 bundle/music_cloud /app/bin/music_cloud
+                - cp -r bundle/lib /app/lib
+                - cp -r bundle/data /app/data
+                - install -Dm644 ${{ env.PACKAGE_NAME }}.desktop /app/share/applications/${{ env.APP_ID }}.desktop
+                - install -Dm644 ${{ env.PACKAGE_NAME }}.png /app/share/icons/hicolor/256x256/apps/${{ env.APP_ID }}.png
+              sources:
+                - type: dir
+                  path: build/linux/x64/release/
+                - type: file
+                  path: linux/packaging/appimage/${{ env.PACKAGE_NAME }}.desktop
+                - type: file  
+                  path: assets/images/app_icon.png
+                  dest-filename: ${{ env.PACKAGE_NAME }}.png
+          MANIFEST
+
+      - name: Get Dependencies and Build Flutter App
+        run: |
+          export PATH="/opt/flutter/bin:$PATH"
+          flutter pub get
+          flutter build linux --release
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: ${{ env.APP_ID }}.yml
+          bundle: ${{ env.PACKAGE_NAME }}.flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Rename Flatpak
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p release-artifacts/linux
+          mv ${{ env.PACKAGE_NAME }}.flatpak \
+             "release-artifacts/linux/${{ env.PACKAGE_NAME }}-${VERSION}.flatpak"
+
+      - name: Upload Flatpak Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-release
+          path: release-artifacts/linux/
+          retention-days: 30
+
+  # ============================================================================
+  # CREATE GITHUB RELEASE
+  # ============================================================================
+  create-release:
+    name: Create GitHub Release
+    needs: [build-android, build-ios, build-macos, build-windows, build-linux, build-flatpak]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          
+          # Copy all artifacts to release-assets with flattened structure
+          find artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.ipa" \
+            -o -name "*.dmg" -o -name "*.zip" -o -name "*.msix" \
+            -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" \
+            -o -name "*.flatpak" -o -name "*.tar.gz" \) \
+            -exec cp {} release-assets/ \;
+          
+          ls -la release-assets/
+
+      - name: Generate Release Notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          cat > release-notes.md << 'EOF'
+          # 🎵 Music Cloud ${{ github.ref_name }}
+          
+          ## 📦 Downloads
+          
+          ### Android
+          | File | Description |
+          |------|-------------|
+          | `*-arm64-v8a.apk` | For modern ARM64 devices (recommended for most devices) |
+          | `*-armeabi-v7a.apk` | For older ARM devices |
+          | `*-x86_64.apk` | For x86_64 emulators/devices |
+          | `*.aab` | Android App Bundle (for Play Store) |
+          
+          ### iOS
+          | File | Description |
+          |------|-------------|
+          | `*-ios.ipa` | iOS application package |
+          
+          ### macOS
+          | File | Description |
+          |------|-------------|
+          | `*-macos.dmg` | macOS disk image |
+          | `*-macos.zip` | macOS application (zipped) |
+          
+          ### Windows
+          | File | Description |
+          |------|-------------|
+          | `*-windows.msix` | Windows MSIX installer |
+          | `*-windows-portable.zip` | Portable Windows build |
+          
+          ### Linux
+          | File | Description |
+          |------|-------------|
+          | `*.deb` | Debian/Ubuntu package |
+          | `*.rpm` | Fedora/RHEL/openSUSE package |
+          | `*.AppImage` | Universal AppImage (runs on any distro) |
+          | `*.flatpak` | Flatpak package (sandboxed) |
+          | `*-linux-x64.tar.gz` | Generic Linux archive |
+          
+          ## 🚀 Installation
+          
+          ### Debian/Ubuntu
+          ```bash
+          sudo dpkg -i music_cloud_*.deb
+          sudo apt-get install -f  # Install dependencies if needed
+          ```
+          
+          ### Fedora/RHEL
+          ```bash
+          sudo dnf install music_cloud-*.rpm
+          ```
+          
+          ### openSUSE
+          ```bash
+          sudo zypper install music_cloud-*.rpm
+          ```
+          
+          ### AppImage
+          ```bash
+          chmod +x Music_Cloud-*.AppImage
+          ./Music_Cloud-*.AppImage
+          ```
+          
+          ### Flatpak
+          ```bash
+          flatpak install music_cloud-*.flatpak
+          ```
+          
+          ---
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/...v${{ github.ref_name }}
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Music Cloud ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: release-assets/*
+          draft: true
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

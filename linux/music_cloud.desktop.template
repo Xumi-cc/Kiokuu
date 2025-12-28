@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Music Cloud
+Comment=Your personal music streaming app
+Exec=/path/to/music_cloud %u
+Icon=music_cloud
+Terminal=false
+Type=Application
+Categories=Audio;Music;Player;
+Keywords=music;audio;streaming;playlist;
+StartupNotify=true
+MimeType=x-scheme-handler/musiccloud;
