@@ -722,10 +722,29 @@ jobs:
 
       - name: Free Disk Space
         run: |
-          # Clean up to free disk space for Flatpak export
+          # Aggressive cleanup to free disk space for Flatpak export
+          echo "=== Disk space before cleanup ==="
+          df -h /
+          
+          # Remove Flutter git history (saves ~500MB)
           rm -rf /opt/flutter/.git || true
-          rm -rf ~/.cache/pip || true
-          df -h
+          
+          # Remove Flutter caches
+          rm -rf /opt/flutter/.pub-cache || true
+          rm -rf /opt/flutter/bin/cache/artifacts || true
+          
+          # Remove SDK locales we don't need
+          rm -rf /var/cache/* || true
+          rm -rf /var/log/* || true
+          rm -rf ~/.cache || true
+          rm -rf /tmp/* || true
+          
+          # Remove debug symbols from Flutter build before Flatpak packages it
+          find build/linux/x64/release/bundle -name "*.debug" -delete || true
+          strip --strip-debug build/linux/x64/release/bundle/lib/*.so 2>/dev/null || true
+          
+          echo "=== Disk space after cleanup ==="
+          df -h /
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
