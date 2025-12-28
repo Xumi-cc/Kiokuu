@@ -649,7 +649,7 @@ jobs:
         run: |
           # Install Flutter dependencies
           dnf install -y git curl unzip xz clang cmake ninja-build \
-            gtk3-devel pkg-config mesa-libGL-devel which
+            gtk3-devel pkg-config mesa-libGL-devel which libsecret-devel
 
           # Download and setup Flutter
           git clone https://github.com/flutter/flutter.git -b stable /opt/flutter
