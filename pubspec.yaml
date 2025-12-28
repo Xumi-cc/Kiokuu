@@ -39,8 +39,8 @@ dependencies:
   media_kit: ^1.1.10
   media_kit_libs_video: ^1.0.4
 
-  # Metadata
-  audiotags: ^1.2.0
+  # Metadata - Pure Dart package (works on all platforms including iOS/macOS)
+  audio_metadata_reader: ^1.4.2
 
   # File handling
   file_picker: ^8.0.0+1

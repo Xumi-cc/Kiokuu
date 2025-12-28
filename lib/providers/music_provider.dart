@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:audiotags/audiotags.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:audio_session/audio_session.dart' as as_lib;
@@ -678,30 +678,27 @@ class MusicProvider extends ChangeNotifier {
             Duration duration = Duration.zero;
 
             try {
-              final tag = await AudioTags.read(file.path!);
+              final metadata = readMetadata(File(file.path!), getImage: true);
 
-              if (tag?.title != null && tag!.title!.isNotEmpty) {
-                title = tag.title!;
+              if (metadata.title != null && metadata.title!.isNotEmpty) {
+                title = metadata.title!;
               }
 
-              if (tag?.trackArtist != null && tag!.trackArtist!.isNotEmpty) {
-                artist = tag.trackArtist!;
-              } else if (tag?.albumArtist != null &&
-                  tag!.albumArtist!.isNotEmpty) {
-                artist = tag.albumArtist!;
+              if (metadata.artist != null && metadata.artist!.isNotEmpty) {
+                artist = metadata.artist!;
               }
 
-              if (tag?.album != null) {
-                album = tag!.album;
+              if (metadata.album != null) {
+                album = metadata.album;
               }
 
-              if (tag?.duration != null) {
-                duration = Duration(seconds: tag!.duration!.toInt());
+              if (metadata.duration != null) {
+                duration = metadata.duration!;
               }
 
-              // Handle Artwork
-              if (tag?.pictures != null && tag!.pictures.isNotEmpty) {
-                final picture = tag.pictures.first;
+              // Handle Artwork (first picture from the list)
+              if (metadata.pictures.isNotEmpty) {
+                final picture = metadata.pictures.first;
                 final artFile = File(
                   '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_art.jpg',
                 );

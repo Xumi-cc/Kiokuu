@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:audiotags/audiotags.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'api_service.dart';
 import 'import_folder_service.dart';
 import 'extension_manager_service.dart';
@@ -420,21 +420,16 @@ class ImportProcessorService {
     }
   }
 
-  /// Extract metadata from the audio file
+  /// Extract metadata from the audio file using pure Dart package
   Future<void> _extractMetadata(ImportTask task) async {
     try {
-      final tags = await AudioTags.read(task.file.path);
+      final metadata = readMetadata(task.file, getImage: false);
 
-      if (tags != null) {
-        task.title = tags.title ?? _titleFromFileName(task.fileName);
-        task.artist = tags.trackArtist;
-        task.album = tags.album;
+      task.title = metadata.title ?? _titleFromFileName(task.fileName);
+      task.artist = metadata.artist;
+      task.album = metadata.album;
 
-        debugPrint('📝 Extracted: ${task.title} - ${task.artist}');
-      } else {
-        // Fallback: use filename as title
-        task.title = _titleFromFileName(task.fileName);
-      }
+      debugPrint('📝 Extracted: ${task.title} - ${task.artist}');
     } catch (e) {
       debugPrint('⚠️ Failed to extract metadata: $e');
       task.title = _titleFromFileName(task.fileName);
