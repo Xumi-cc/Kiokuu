@@ -106,26 +106,24 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
-    // Check for updates (only when online)
-    if (!isOfflineMode) {
-      final updateInfo = await UpdateService().checkForUpdate();
+    // Check for updates (uses GitHub, works even when backend is offline)
+    final updateInfo = await UpdateService().checkForUpdate(force: true);
 
-      if (updateInfo != null && mounted) {
-        if (updateInfo.isForced) {
-          // Critical update required - block the app
-          print(
-            '[SplashScreen] Forced update required: ${updateInfo.latestVersion}',
-          );
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => ForceUpdateScreen(updateInfo: updateInfo),
-            ),
-          );
-          return;
-        } else {
-          // Optional update available - show dialog after navigation
-          _pendingUpdateInfo = updateInfo;
-        }
+    if (updateInfo != null && mounted) {
+      if (updateInfo.isForced) {
+        // Critical update required - block the app
+        print(
+          '[SplashScreen] Forced update required: ${updateInfo.latestVersion}',
+        );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ForceUpdateScreen(updateInfo: updateInfo),
+          ),
+        );
+        return;
+      } else {
+        // Optional update available - show dialog after navigation
+        _pendingUpdateInfo = updateInfo;
       }
     }
 

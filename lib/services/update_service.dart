@@ -5,6 +5,14 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Type of installation on Linux
+enum LinuxInstallationType {
+  appImage,
+  flatpak,
+  systemPackage, // deb, rpm, etc.
+  unknown,
+}
+
 /// Information about an available update
 class UpdateInfo {
   final String currentVersion;
@@ -197,10 +205,48 @@ class UpdateService {
     } else if (Platform.isMacOS) {
       urlTemplate = downloadUrls['macos'] as String?;
     } else if (Platform.isLinux) {
-      urlTemplate = downloadUrls['linux'] as String?;
+      final installType = _getLinuxInstallationType();
+      debugPrint('[UpdateService] Linux installation type: $installType');
+
+      // If it's an AppImage, we can give the direct link
+      if (installType == LinuxInstallationType.appImage) {
+        urlTemplate = downloadUrls['linux'] as String?;
+      } else {
+        // For other types (DEB, RPM, Flatpak), it's safer to send them to the
+        // releases page so they can pick the right format or update via their
+        // package manager.
+        return versionInfo['changelog_url'] as String? ??
+            'https://github.com/$_owner/$_repo/releases/latest';
+      }
     }
 
     return urlTemplate?.replaceAll('{version}', version);
+  }
+
+  /// Detect how the app is installed on Linux
+  LinuxInstallationType _getLinuxInstallationType() {
+    if (!Platform.isLinux) return LinuxInstallationType.unknown;
+
+    // Check for AppImage
+    if (Platform.environment.containsKey('APPIMAGE')) {
+      return LinuxInstallationType.appImage;
+    }
+
+    // Check for Flatpak
+    if (Platform.environment.containsKey('FLATPAK_ID') ||
+        File('/.flatpak-info').existsSync()) {
+      return LinuxInstallationType.flatpak;
+    }
+
+    // Check executable path
+    final exePath = Platform.executable;
+    if (exePath.startsWith('/usr/bin') ||
+        exePath.startsWith('/opt/') ||
+        exePath.startsWith('/usr/lib')) {
+      return LinuxInstallationType.systemPackage;
+    }
+
+    return LinuxInstallationType.unknown;
   }
 
   /// Compare versions - returns true if v1 < v2
