@@ -623,8 +623,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSidebarPlaylists();
   }
 
-  Future<void> _loadSidebarPlaylists() async {
-    if (_isPlaylistsLoading) return;
+  Future<void> _loadSidebarPlaylists({bool forceRefresh = false}) async {
+    if (_isPlaylistsLoading && !forceRefresh) return;
     setState(() => _isPlaylistsLoading = true);
 
     try {
@@ -886,11 +886,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Pull-to-refresh handler that resets loading states to show skeletons
   Future<void> _onPullToRefresh() async {
     // Reset loading states to show skeleton animations
+    // Note: Don't pre-set _isPlaylistsLoading here as _loadSidebarPlaylists
+    // has a guard that returns early if it's already true
     setState(() {
       _isLoading = true;
       _isFriendsLoading = true;
       _isAnalyticsLoading = true;
-      _isPlaylistsLoading = true;
     });
 
     // Refetch all data
@@ -898,7 +899,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadData(),
       _loadFriendsActivity(),
       _loadAnalyticsData(),
-      _loadSidebarPlaylists(),
+      _loadSidebarPlaylists(forceRefresh: true),
     ]);
   }
 
