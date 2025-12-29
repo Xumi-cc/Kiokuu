@@ -42,14 +42,10 @@ endif()
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_14)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
-  # GCC-specific warning suppression
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-literal-operator)
-  endif()
-  # Clang-specific warning suppression
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-literal-operator)
-  endif()
+  # First, ignore unknown warning options for cross-compiler compatibility (older compilers)
+  target_compile_options(${TARGET} PRIVATE -Wno-unknown-warning-option)
+  # Then suppress deprecated-literal-operator warning from flutter_secure_storage_linux's json.hpp
+  target_compile_options(${TARGET} PRIVATE -Wno-deprecated-literal-operator)
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
   target_compile_definitions(${TARGET} PRIVATE "APPLICATION_ID=\"${APPLICATION_ID}\"")
