@@ -38,6 +38,14 @@ class _LyricsScreenState extends State<LyricsScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // Ensure status bar is restored when leaving lyrics screen by any means
+    // (e.g., system back button, gesture navigation)
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.edgeToEdge,
+        overlays: SystemUiOverlay.values,
+      );
+    }
     super.dispose();
   }
 
