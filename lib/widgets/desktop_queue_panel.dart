@@ -133,7 +133,10 @@ class _DesktopQueuePanelState extends State<DesktopQueuePanel> {
 
         return ReorderableListView.builder(
           scrollController: _scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.only(
+            top: 8,
+            bottom: 100,
+          ), // Bottom padding for player bar
           itemCount: provider.playlist.length,
           onReorder: (oldIndex, newIndex) {
             provider.reorderPlaylist(oldIndex, newIndex);
