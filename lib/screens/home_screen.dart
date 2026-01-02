@@ -15,6 +15,7 @@ import '../widgets/custom_title_bar.dart';
 import '../widgets/playlist_cover_mosaic.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/ai_match_review_sheet.dart';
+import '../widgets/desktop_queue_panel.dart';
 import '../services/api_service.dart';
 import '../services/friends_service.dart';
 import '../services/analytics_service.dart';
@@ -125,6 +126,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Track previous screen size for responsive navigation
   bool? _wasLargeScreen;
+
+  // Desktop queue panel visibility
+  bool _showQueuePanel = false;
 
   // Import state
   List<ImportTask> _importTasks = [];
@@ -1786,6 +1790,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         ], // Close Stack children
                       ), // Close Stack
               ), // Close Expanded
+              // Desktop Queue Panel (slides in from right)
+              if (isLargeScreen)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  width: _showQueuePanel ? 350 : 0,
+                  child: _showQueuePanel
+                      ? DesktopQueuePanel(
+                          onClose: () {
+                            setState(() {
+                              _showQueuePanel = false;
+                            });
+                          },
+                        )
+                      : null,
+                ),
             ],
           ),
         ),
@@ -1804,7 +1824,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {
                   _navigateToPlayer();
                 },
+                onQueueTap: isLargeScreen
+                    ? () {
+                        setState(() {
+                          _showQueuePanel = !_showQueuePanel;
+                        });
+                      }
+                    : null,
                 showFullControls: isLargeScreen,
+                showQueueActive: _showQueuePanel,
               );
             },
           ),

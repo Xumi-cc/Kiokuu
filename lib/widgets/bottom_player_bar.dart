@@ -9,14 +9,17 @@ import 'add_to_playlist_sheet.dart';
 
 class BottomPlayerBar extends StatefulWidget {
   final VoidCallback? onTap;
+  final VoidCallback? onQueueTap; // Callback when queue button is tapped
   final bool showFullControls;
-  final bool
-  enableHero; // Set to false when inside PlayerScreen to avoid duplicate Hero tags
+  final bool showQueueActive; // Whether queue panel is currently shown
+  final bool enableHero;
 
   const BottomPlayerBar({
     super.key,
     this.onTap,
+    this.onQueueTap,
     this.showFullControls = false,
+    this.showQueueActive = false,
     this.enableHero = true,
   });
 
@@ -1009,8 +1012,10 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
                       IconButton(
                         icon: const Icon(Icons.queue_music_rounded),
                         iconSize: 20,
-                        color: Colors.white.withOpacity(0.7),
-                        onPressed: () {},
+                        color: widget.showQueueActive
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.7),
+                        onPressed: widget.onQueueTap,
                         tooltip: 'Queue',
                       ),
                       IconButton(
