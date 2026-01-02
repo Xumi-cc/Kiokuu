@@ -1,21 +1,35 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../services/api_service.dart';
+import '../services/discord_rpc_service.dart';
 import '../services/extension_manager_service.dart';
 import '../services/import_folder_service.dart';
 import '../services/import_processor_service.dart';
+import '../services/import_watcher_service.dart';
 import '../services/import_log_service.dart';
+import '../services/storage_management_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../widgets/ai_match_review_sheet.dart';
 import '../widgets/custom_title_bar.dart';
+import '../config/app_config.dart';
 import 'auth_screen.dart';
 
 // --- Models ---
 
 enum SettingsCategory {
   subscription,
+  usage,
+  storage,
+  connections,
   autoImport,
   pendingReviews,
   logs,
@@ -28,6 +42,12 @@ extension SettingsCategoryExtension on SettingsCategory {
     switch (this) {
       case SettingsCategory.subscription:
         return 'Subscription';
+      case SettingsCategory.usage:
+        return 'Usage';
+      case SettingsCategory.storage:
+        return 'Storage';
+      case SettingsCategory.connections:
+        return 'Connections';
       case SettingsCategory.account:
         return 'Account';
       case SettingsCategory.autoImport:
@@ -45,6 +65,12 @@ extension SettingsCategoryExtension on SettingsCategory {
     switch (this) {
       case SettingsCategory.subscription:
         return Icons.workspace_premium_outlined;
+      case SettingsCategory.usage:
+        return Icons.bar_chart_rounded;
+      case SettingsCategory.storage:
+        return Icons.storage_rounded;
+      case SettingsCategory.connections:
+        return Icons.link;
       case SettingsCategory.account:
         return Icons.person_outline;
       case SettingsCategory.autoImport:
@@ -308,6 +334,7 @@ class _SettingsContent extends StatefulWidget {
 class _SettingsContentState extends State<_SettingsContent> {
   final _api = ApiService();
   String? _importFolderPath;
+  String _appVersion = '...';
 
   // Track downloading state per extension
   final Map<String, bool> _isDownloading = {};
@@ -317,12 +344,18 @@ class _SettingsContentState extends State<_SettingsContent> {
   Map<String, dynamic>? _subscription;
   Map<String, dynamic>? _plans;
   bool _isLoadingSubscription = true;
+  bool _isLoggingOut = false;
+
+  // Timer for refreshing pending reviews
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _refreshState();
     _loadSubscription();
+    _loadAppVersion();
+    _startRefreshTimerIfNeeded();
   }
 
   @override
@@ -333,6 +366,27 @@ class _SettingsContentState extends State<_SettingsContent> {
       if (widget.category == SettingsCategory.subscription) {
         _loadSubscription();
       }
+      _startRefreshTimerIfNeeded();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startRefreshTimerIfNeeded() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+
+    // Only refresh periodically when viewing pending reviews
+    if (widget.category == SettingsCategory.pendingReviews) {
+      _refreshTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
     }
   }
 
@@ -355,6 +409,15 @@ class _SettingsContentState extends State<_SettingsContent> {
         _subscription = results[0];
         _plans = results[1];
         _isLoadingSubscription = false;
+      });
+    }
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = packageInfo.version;
       });
     }
   }
@@ -426,6 +489,7 @@ class _SettingsContentState extends State<_SettingsContent> {
   }
 
   Future<void> _logout() async {
+    setState(() => _isLoggingOut = true);
     await _api.logout();
     if (mounted) {
       Navigator.pushAndRemoveUntil(
@@ -433,6 +497,104 @@ class _SettingsContentState extends State<_SettingsContent> {
         MaterialPageRoute(builder: (_) => const AuthScreen()),
         (route) => false,
       );
+    }
+  }
+
+  Future<void> _pickImportFolder() async {
+    try {
+      final result = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Select Import Folder',
+      );
+
+      if (result != null) {
+        final success = await ImportFolderService.instance
+            .setCustomImportFolder(result);
+        if (success) {
+          setState(() {
+            _importFolderPath = result;
+          });
+          if (mounted) {
+            AppSnackbar.success(context, 'Import folder updated successfully');
+          }
+        } else {
+          if (mounted) {
+            AppSnackbar.error(context, 'Failed to set import folder');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking folder: $e');
+      if (mounted) {
+        AppSnackbar.error(context, 'Error selecting folder: $e');
+      }
+    }
+  }
+
+  Future<void> _resetToDefaultFolder() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF121212),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+        title: const Text(
+          'Reset to Default Folder?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will revert to the default KioKuu import folder.',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[400],
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await ImportFolderService.instance.clearCustomImportFolder();
+      setState(() {
+        _importFolderPath = ImportFolderService.instance.importFolderPath;
+      });
+      if (mounted) {
+        AppSnackbar.success(context, 'Reverted to default import folder');
+      }
     }
   }
 
@@ -463,6 +625,10 @@ class _SettingsContentState extends State<_SettingsContent> {
         // Content
         if (widget.category == SettingsCategory.subscription)
           _buildSubscriptionContent(),
+        if (widget.category == SettingsCategory.usage) _buildUsageContent(),
+        if (widget.category == SettingsCategory.storage) _buildStorageContent(),
+        if (widget.category == SettingsCategory.connections)
+          _buildConnectionsContent(),
         if (widget.category == SettingsCategory.autoImport)
           _buildAutoImportContent(),
         if (widget.category == SettingsCategory.pendingReviews)
@@ -478,6 +644,12 @@ class _SettingsContentState extends State<_SettingsContent> {
     switch (category) {
       case SettingsCategory.subscription:
         return 'Choose a plan that fits your needs.';
+      case SettingsCategory.usage:
+        return 'Track your storage, listening activity, and most played songs.';
+      case SettingsCategory.storage:
+        return 'Manage local storage, cache, and offline content.';
+      case SettingsCategory.connections:
+        return 'Connect external services to enhance your experience.';
       case SettingsCategory.account:
         return 'Manage your account and session.';
       case SettingsCategory.autoImport:
@@ -841,6 +1013,1263 @@ class _SettingsContentState extends State<_SettingsContent> {
           ),
         ),
       ],
+    );
+  }
+
+  // Usage state
+  Map<String, dynamic>? _usageStats;
+  bool _isLoadingUsage = false;
+
+  Future<void> _loadUsageStats() async {
+    if (_isLoadingUsage) return;
+    setState(() => _isLoadingUsage = true);
+
+    final stats = await _api.getUsageStats();
+    if (mounted) {
+      setState(() {
+        _usageStats = stats;
+        _isLoadingUsage = false;
+      });
+    }
+  }
+
+  String _formatMinutes(int minutes) {
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    if (hours < 24) return '${hours}h ${mins}m';
+    final days = hours ~/ 24;
+    final remainingHours = hours % 24;
+    return '${days}d ${remainingHours}h';
+  }
+
+  Widget _buildUsageContent() {
+    // Load usage stats if not loaded
+    if (_usageStats == null && !_isLoadingUsage) {
+      _loadUsageStats();
+    }
+
+    if (_isLoadingUsage || _usageStats == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(48),
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    final stats = _usageStats!;
+    final storageCountedBytes = (stats['storage_counted_bytes'] ?? 0) as int;
+    final storageLimitBytes = (stats['storage_limit_bytes'] ?? 0) as int;
+    final storageLimitGB = (stats['storage_limit_gb'] ?? 0) as int;
+    final totalSongs = (stats['total_songs'] ?? 0) as int;
+    final popularSongCount = (stats['popular_song_count'] ?? 0) as int;
+    final totalActiveDays = (stats['total_active_days'] ?? 0) as int;
+    final currentStreak = (stats['current_streak'] ?? 0) as int;
+    final longestStreak = (stats['longest_streak'] ?? 0) as int;
+    final totalListenedMinutes = (stats['total_listened_minutes'] ?? 0) as int;
+    final topSongs = (stats['top_songs'] as List<dynamic>?) ?? [];
+
+    final storageCountedGB = storageCountedBytes / (1024 * 1024 * 1024);
+    final storagePercent = storageLimitBytes > 0
+        ? (storageCountedBytes / storageLimitBytes * 100).clamp(0.0, 100.0)
+        : 0.0;
+
+    // Format storage used - show MB if less than 1GB
+    final String storageUsedText;
+    if (storageCountedGB < 1.0) {
+      final storageMB = storageCountedBytes / (1024 * 1024);
+      storageUsedText = '${storageMB.toStringAsFixed(0)} MB';
+    } else {
+      storageUsedText = '${storageCountedGB.toStringAsFixed(1)} GB';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Storage Donut Chart
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [const Color(0xFF1A1A1A), const Color(0xFF0D0D0D)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Donut chart
+              SizedBox(
+                height: 200,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PieChart(
+                      PieChartData(
+                        sectionsSpace: 0,
+                        centerSpaceRadius: 60,
+                        startDegreeOffset: -90,
+                        sections: [
+                          // Used storage
+                          PieChartSectionData(
+                            value: storageCountedGB,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6C63FF), Color(0xFF00BFA5)],
+                            ),
+                            radius: 25,
+                            showTitle: false,
+                          ),
+                          // Available storage
+                          PieChartSectionData(
+                            value: math.max(
+                              0.1,
+                              storageLimitGB - storageCountedGB,
+                            ),
+                            color: const Color(0xFF1F1F1F),
+                            radius: 25,
+                            showTitle: false,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Center text
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${storagePercent.toStringAsFixed(0)}%',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '$storageUsedText / $storageLimitGB GB',
+                            style: GoogleFonts.inter(
+                              color: Colors.grey[400],
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (popularSongCount > 0) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF6C63FF).withOpacity(0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome,
+                        color: const Color(0xFF6C63FF),
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$popularSongCount popular song${popularSongCount > 1 ? 's' : ''} don\'t count toward quota',
+                        style: TextStyle(color: Colors.grey[300], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Stats Row
+        Row(
+          children: [
+            Expanded(
+              child: _buildMinimalStat(
+                totalSongs.toString(),
+                'Songs',
+                Icons.music_note_rounded,
+                const Color(0xFF00BFA5),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildMinimalStat(
+                _formatMinutes(totalListenedMinutes),
+                'Listened',
+                Icons.headphones_rounded,
+                const Color(0xFF6C63FF),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMinimalStat(
+                totalActiveDays.toString(),
+                'Active Days',
+                Icons.calendar_today_rounded,
+                const Color(0xFFFF6B6B),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildMinimalStat(
+                '$currentStreak',
+                longestStreak > currentStreak
+                    ? 'Streak (Best: $longestStreak)'
+                    : 'Day Streak',
+                Icons.local_fire_department_rounded,
+                const Color(0xFFFF9F1C),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 32),
+
+        // Most Played with bar chart
+        if (topSongs.isNotEmpty) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Top Songs',
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                'Last 30 days',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [const Color(0xFF1A1A1A), const Color(0xFF0D0D0D)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Column(
+              children: [
+                // Horizontal bar chart for top 5
+                SizedBox(
+                  height: 180,
+                  child: BarChart(
+                    BarChartData(
+                      alignment: BarChartAlignment.spaceAround,
+                      maxY:
+                          (topSongs.isNotEmpty
+                                  ? (topSongs[0]['play_count'] ?? 1) as num
+                                  : 1)
+                              .toDouble() *
+                          1.15,
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipColor: (group) => const Color(0xFF2A2A2A),
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final song = topSongs[groupIndex];
+                            return BarTooltipItem(
+                              '${song['title']}\n',
+                              const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: '${rod.toY.toInt()} plays',
+                                  style: TextStyle(
+                                    color: const Color(0xFF6C63FF),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              final idx = value.toInt();
+                              if (idx >= 0 &&
+                                  idx < math.min(5, topSongs.length)) {
+                                final title = topSongs[idx]['title'] ?? '';
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Text(
+                                    title.length > 8
+                                        ? '${title.substring(0, 8)}...'
+                                        : title,
+                                    style: TextStyle(
+                                      color: Colors.grey[500],
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: 5,
+                        getDrawingHorizontalLine: (value) => FlLine(
+                          color: Colors.white.withOpacity(0.05),
+                          strokeWidth: 1,
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      barGroups: [
+                        for (int i = 0; i < math.min(5, topSongs.length); i++)
+                          BarChartGroupData(
+                            x: i,
+                            barRods: [
+                              BarChartRodData(
+                                toY: ((topSongs[i]['play_count'] ?? 0) as num)
+                                    .toDouble(),
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: i == 0
+                                      ? [
+                                          const Color(0xFF6C63FF),
+                                          const Color(0xFF8B85FF),
+                                        ]
+                                      : [
+                                          const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.6),
+                                          const Color(
+                                            0xFF8B85FF,
+                                          ).withOpacity(0.6),
+                                        ],
+                                ),
+                                width: 32,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(6),
+                                  topRight: Radius.circular(6),
+                                ),
+                                backDrawRodData: BackgroundBarChartRodData(
+                                  show: true,
+                                  toY:
+                                      (topSongs[0]['play_count'] as num)
+                                          .toDouble() *
+                                      1.15,
+                                  color: Colors.white.withOpacity(0.02),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Storage management state
+  List<StorageCategory>? _storageCategories;
+  bool _isLoadingStorage = false;
+  bool _isClearingStorage = false;
+  String? _clearingCategoryName;
+
+  Future<void> _loadStorageData() async {
+    if (_isLoadingStorage) return;
+    setState(() => _isLoadingStorage = true);
+
+    try {
+      final categories = await StorageManagementService.instance
+          .getStorageBreakdown();
+      if (mounted) {
+        setState(() {
+          _storageCategories = categories;
+          _isLoadingStorage = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingStorage = false);
+        AppSnackbar.error(context, 'Failed to load storage data');
+      }
+    }
+  }
+
+  IconData _getStorageIcon(StorageIconType type) {
+    switch (type) {
+      case StorageIconType.offlineSongs:
+        return Icons.download_for_offline_rounded;
+      case StorageIconType.imageCache:
+        return Icons.image_rounded;
+      case StorageIconType.playlistCache:
+        return Icons.playlist_play_rounded;
+      case StorageIconType.lyrics:
+        return Icons.lyrics_rounded;
+      case StorageIconType.importTasks:
+        return Icons.upload_file_rounded;
+      case StorageIconType.preferences:
+        return Icons.settings_rounded;
+      case StorageIconType.tempFiles:
+        return Icons.folder_delete_rounded;
+    }
+  }
+
+  Color _getStorageColor(StorageIconType type) {
+    switch (type) {
+      case StorageIconType.offlineSongs:
+        return const Color(0xFF6C63FF);
+      case StorageIconType.imageCache:
+        return const Color(0xFF00BFA5);
+      case StorageIconType.playlistCache:
+        return const Color(0xFFFF6B6B);
+      case StorageIconType.lyrics:
+        return const Color(0xFFFF9F1C);
+      case StorageIconType.importTasks:
+        return const Color(0xFF4ECDC4);
+      case StorageIconType.preferences:
+        return const Color(0xFF9B7DFF);
+      case StorageIconType.tempFiles:
+        return const Color(0xFFE84855);
+    }
+  }
+
+  Future<void> _clearStorageCategory(StorageCategory category) async {
+    if (category.onClear == null) return;
+
+    // Show confirmation dialog for offline songs
+    if (category.iconType == StorageIconType.offlineSongs) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.warning_rounded, color: Colors.orange[400], size: 24),
+              const SizedBox(width: 12),
+              const Text(
+                'Delete Offline Songs?',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+          content: Text(
+            'This will delete all downloaded songs. You\'ll need to re-download them for offline playback.',
+            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey[500])),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red[400]),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+    }
+
+    setState(() {
+      _isClearingStorage = true;
+      _clearingCategoryName = category.name;
+    });
+
+    try {
+      await category.onClear!();
+      if (mounted) {
+        AppSnackbar.success(context, '${category.name} cleared successfully');
+        _loadStorageData(); // Refresh data
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Failed to clear ${category.name}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingStorage = false;
+          _clearingCategoryName = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearAllCaches() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.cleaning_services_rounded,
+              color: Colors.orange[400],
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Clear All Caches?',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text(
+          'This will clear image cache, playlist cache, lyrics, and temporary files. '
+          'Offline songs will NOT be deleted.',
+          style: TextStyle(color: Colors.grey[400], fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[500])),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF6C63FF),
+            ),
+            child: const Text('Clear Caches'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isClearingStorage = true;
+      _clearingCategoryName = 'all caches';
+    });
+
+    try {
+      await StorageManagementService.instance.clearAllCaches();
+      if (mounted) {
+        AppSnackbar.success(context, 'All caches cleared successfully');
+        _loadStorageData();
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Failed to clear caches');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingStorage = false;
+          _clearingCategoryName = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.delete_forever_rounded,
+              color: Colors.red[400],
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Clear All Data?',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text(
+          'This will delete ALL local data including offline songs, caches, and import logs. '
+          'Your cloud library will not be affected.',
+          style: TextStyle(color: Colors.grey[400], fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[500])),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red[400]),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isClearingStorage = true;
+      _clearingCategoryName = 'all data';
+    });
+
+    try {
+      await StorageManagementService.instance.clearAllData();
+      if (mounted) {
+        AppSnackbar.success(context, 'All local data cleared');
+        _loadStorageData();
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Failed to clear data');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingStorage = false;
+          _clearingCategoryName = null;
+        });
+      }
+    }
+  }
+
+  Widget _buildStorageContent() {
+    // Load storage data if not loaded
+    if (_storageCategories == null && !_isLoadingStorage) {
+      _loadStorageData();
+    }
+
+    if (_isLoadingStorage || _storageCategories == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFF6C63FF)),
+              const SizedBox(height: 16),
+              Text(
+                'Analyzing storage...',
+                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final categories = _storageCategories!;
+    final totalBytes = categories.fold<int>(0, (sum, cat) => sum + cat.bytes);
+
+    // Format total size
+    String totalSize;
+    if (totalBytes < 1024 * 1024) {
+      totalSize = '${(totalBytes / 1024).toStringAsFixed(1)} KB';
+    } else if (totalBytes < 1024 * 1024 * 1024) {
+      totalSize = '${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else {
+      totalSize =
+          '${(totalBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 400;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Total Storage Card
+            Container(
+              padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+              ),
+              child: Column(
+                children: [
+                  // Header - stacked on mobile, row on desktop
+                  if (isSmallScreen) ...[
+                    // Mobile: Stacked layout
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.storage_rounded,
+                            color: Color(0xFF6C63FF),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Local Storage',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                'Total used by KioKuu',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          totalSize,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    // Desktop: Side-by-side layout
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.storage_rounded,
+                            color: Color(0xFF6C63FF),
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Local Storage',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Total used by KioKuu',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          totalSize,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  SizedBox(height: isSmallScreen ? 16 : 20),
+
+                  // Storage Bar with segments
+                  Container(
+                    height: 8,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: const Color(0xFF2A2A2A),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Row(
+                        children: categories.where((c) => c.bytes > 0).map((
+                          cat,
+                        ) {
+                          final percentage = totalBytes > 0
+                              ? cat.bytes / totalBytes
+                              : 0.0;
+                          return Expanded(
+                            flex: (percentage * 1000).toInt().clamp(1, 1000),
+                            child: Container(
+                              color: _getStorageColor(cat.iconType),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Legend
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: categories.where((c) => c.bytes > 0).map((cat) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _getStorageColor(cat.iconType),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            cat.name,
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Storage Categories
+            Text(
+              'Storage Breakdown',
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ...categories.map(
+              (category) => _buildStorageCategoryTile(category),
+            ),
+
+            const SizedBox(height: 32),
+
+            // Quick Actions
+            Text(
+              'Quick Actions',
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Clear All Caches Button
+            _buildStorageActionButton(
+              icon: Icons.cleaning_services_rounded,
+              label: 'Clear All Caches',
+              description: 'Free up space without removing offline songs',
+              color: const Color(0xFF6C63FF),
+              onTap: _isClearingStorage ? null : _clearAllCaches,
+              isLoading:
+                  _isClearingStorage && _clearingCategoryName == 'all caches',
+            ),
+            const SizedBox(height: 12),
+
+            // Clear All Data Button
+            _buildStorageActionButton(
+              icon: Icons.delete_forever_rounded,
+              label: 'Clear All Local Data',
+              description: 'Delete everything including offline songs',
+              color: Colors.red[400]!,
+              onTap: _isClearingStorage ? null : _clearAllData,
+              isLoading:
+                  _isClearingStorage && _clearingCategoryName == 'all data',
+            ),
+
+            const SizedBox(height: 24),
+
+            // Info Note
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F1F1F),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: Colors.grey[600], size: 18),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Your cloud library is stored securely on our servers and won\'t be affected by clearing local data.',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStorageCategoryTile(StorageCategory category) {
+    final isClearing =
+        _isClearingStorage && _clearingCategoryName == category.name;
+    final color = _getStorageColor(category.iconType);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: category.canClear && category.bytes > 0 && !_isClearingStorage
+              ? () => _clearStorageCategory(category)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _getStorageIcon(category.iconType),
+                    color: color,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        category.description,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 11,
+                            color: Colors.grey[700],
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              category.displayPath,
+                              style: TextStyle(
+                                color: Colors.grey[700],
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (isClearing)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: color,
+                    ),
+                  )
+                else ...[
+                  Text(
+                    category.formattedSize,
+                    style: GoogleFonts.inter(
+                      color: category.bytes > 0
+                          ? Colors.white
+                          : Colors.grey[600],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (category.canClear && category.bytes > 0) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.grey[600],
+                      size: 18,
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStorageActionButton({
+    required IconData icon,
+    required String label,
+    required String description,
+    required Color color,
+    VoidCallback? onTap,
+    bool isLoading = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: isLoading
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: color,
+                          ),
+                        )
+                      : Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: color.withOpacity(0.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMinimalStat(
+    String value,
+    String label,
+    IconData icon,
+    Color accentColor,
+  ) {
+    return Container(
+      height: 110,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [const Color(0xFF1A1A1A), const Color(0xFF0D0D0D)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Stack(
+        children: [
+          // Background Icon
+          Positioned(
+            right: -10,
+            bottom: -10,
+            child: Icon(icon, size: 80, color: accentColor.withOpacity(0.05)),
+          ),
+          // Content
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[400],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1445,27 +2874,83 @@ class _SettingsContentState extends State<_SettingsContent> {
                   _importFolderPath ?? 'Not available',
                   style: TextStyle(color: Colors.grey[400]),
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.folder_open, color: Colors.white70),
-                  onPressed: () {
-                    AppSnackbar.info(
-                      context,
-                      message: 'Folder: $_importFolderPath',
-                    );
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.folder_open,
+                        color: Colors.white70,
+                      ),
+                      onPressed: _pickImportFolder,
+                      tooltip: 'Change folder',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                      onPressed: _resetToDefaultFolder,
+                      tooltip: 'Reset to default',
+                    ),
+                  ],
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Audio files dropped here will be processed automatically.',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Audio files dropped here will be processed automatically.',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickImportFolder,
+                            icon: const Icon(Icons.folder, size: 18),
+                            label: const Text('Change Folder'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              side: BorderSide(
+                                color: Colors.grey.withOpacity(0.3),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _resetToDefaultFolder,
+                            icon: const Icon(Icons.restore, size: 18),
+                            label: const Text('Reset Default'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                              side: BorderSide(
+                                color: Colors.orange.withOpacity(0.3),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1513,11 +2998,34 @@ class _SettingsContentState extends State<_SettingsContent> {
   }
 
   Widget _buildPendingReviewsContent() {
-    final reviewTasks = ImportProcessorService.instance.tasks
+    final allTasks = ImportProcessorService.instance.tasks;
+
+    // Categorize tasks by status
+    final uploadingTasks = allTasks
+        .where((t) => t.status == ImportStatus.uploading)
+        .toList();
+    final processingTasks = allTasks
+        .where(
+          (t) =>
+              t.status == ImportStatus.pending ||
+              t.status == ImportStatus.extractingMetadata ||
+              t.status == ImportStatus.matchingWithAI ||
+              t.status == ImportStatus.waitingForAI,
+        )
+        .toList();
+    final reviewTasks = allTasks
         .where((t) => t.status == ImportStatus.awaitingReview)
         .toList();
+    final completedTasks = allTasks
+        .where((t) => t.status == ImportStatus.completed)
+        .toList();
+    final failedTasks = allTasks
+        .where((t) => t.status == ImportStatus.failed)
+        .toList();
 
-    if (reviewTasks.isEmpty) {
+    final hasAnyTasks = allTasks.isNotEmpty;
+
+    if (!hasAnyTasks) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1546,7 +3054,7 @@ class _SettingsContentState extends State<_SettingsContent> {
             ),
             const SizedBox(height: 6),
             Text(
-              'No files waiting for review',
+              'No import tasks',
               style: TextStyle(color: Colors.grey[500], fontSize: 14),
             ),
           ],
@@ -1557,39 +3065,405 @@ class _SettingsContentState extends State<_SettingsContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Info banner
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE040FB).withAlpha(20),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE040FB).withAlpha(50)),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.auto_awesome,
-                color: Color(0xFFE040FB),
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '${reviewTasks.length} file${reviewTasks.length > 1 ? 's' : ''} need${reviewTasks.length == 1 ? 's' : ''} your review',
-                  style: const TextStyle(
-                    color: Color(0xFFE040FB),
-                    fontSize: 14,
+        // Uploading section
+        if (uploadingTasks.isNotEmpty) ...[
+          _SectionHeader('Uploading'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withAlpha(20),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withAlpha(50)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue,
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${uploadingTasks.length} file${uploadingTasks.length > 1 ? 's' : ''} uploading',
+                    style: const TextStyle(color: Colors.blue, fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...uploadingTasks.map((task) => _buildUploadingTaskCard(task)),
+          const SizedBox(height: 24),
+        ],
+
+        // Processing queue section
+        if (processingTasks.isNotEmpty) ...[
+          _SectionHeader('Processing Queue'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withAlpha(20),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withAlpha(50)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.hourglass_top, color: Colors.orange, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${processingTasks.length} file${processingTasks.length > 1 ? 's' : ''} in queue',
+                    style: const TextStyle(color: Colors.orange, fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...processingTasks.map((task) => _buildProcessingTaskCard(task)),
+          const SizedBox(height: 24),
+        ],
+
+        // Awaiting review section
+        if (reviewTasks.isNotEmpty) ...[
+          _SectionHeader('Awaiting Review'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE040FB).withAlpha(20),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE040FB).withAlpha(50)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome,
+                  color: Color(0xFFE040FB),
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${reviewTasks.length} file${reviewTasks.length > 1 ? 's' : ''} need${reviewTasks.length == 1 ? 's' : ''} your review',
+                    style: const TextStyle(
+                      color: Color(0xFFE040FB),
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...reviewTasks.map((task) => _buildReviewTaskCard(task)),
+          const SizedBox(height: 24),
+        ],
+
+        // Completed section
+        if (completedTasks.isNotEmpty) ...[
+          _SectionHeader('Recently Completed'),
+          ...completedTasks.map((task) => _buildCompletedTaskCard(task)),
+          const SizedBox(height: 24),
+        ],
+
+        // Failed section
+        if (failedTasks.isNotEmpty) ...[
+          _SectionHeader('Failed'),
+          ...failedTasks.map((task) => _buildFailedTaskCard(task)),
+          const SizedBox(height: 24),
+        ],
+
+        // Clear completed button
+        if (completedTasks.isNotEmpty || failedTasks.isNotEmpty)
+          Center(
+            child: TextButton.icon(
+              onPressed: () {
+                ImportProcessorService.instance.clearCompletedTasks();
+                setState(() {});
+              },
+              icon: const Icon(Icons.clear_all, size: 18),
+              label: const Text('Clear Completed'),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey[400]),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildUploadingTaskCard(ImportTask task) {
+    final albumArt = task.aiMatchResult?.albumArt;
+    final progress = task.uploadProgress;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _SettingsCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Album art
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: albumArt != null && albumArt.isNotEmpty
+                        ? Image.network(
+                            albumArt,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildPlaceholder(48),
+                          )
+                        : _buildPlaceholder(48),
+                  ),
+                  const SizedBox(width: 12),
+                  // Song info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title ?? task.fileName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          task.artist ?? 'Unknown artist',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Progress percentage
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withAlpha(30),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${(progress * 100).toInt()}%',
+                      style: const TextStyle(
+                        color: Colors.blue,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: Colors.white.withAlpha(20),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+                  minHeight: 4,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+      ),
+    );
+  }
 
-        // Task list
-        ...reviewTasks.map((task) => _buildReviewTaskCard(task)),
-      ],
+  Widget _buildProcessingTaskCard(ImportTask task) {
+    String statusText;
+    IconData statusIcon;
+    Color statusColor;
+
+    switch (task.status) {
+      case ImportStatus.pending:
+        statusText = 'Queued';
+        statusIcon = Icons.schedule;
+        statusColor = Colors.grey;
+        break;
+      case ImportStatus.waitingForAI:
+        statusText = 'Waiting for AI';
+        statusIcon = Icons.smart_toy;
+        statusColor = Colors.orange;
+        break;
+      case ImportStatus.extractingMetadata:
+        statusText = 'Reading metadata';
+        statusIcon = Icons.library_music;
+        statusColor = Colors.purple;
+        break;
+      case ImportStatus.matchingWithAI:
+        statusText = 'AI matching...';
+        statusIcon = Icons.auto_awesome;
+        statusColor = const Color(0xFFE040FB);
+        break;
+      default:
+        statusText = 'Processing';
+        statusIcon = Icons.sync;
+        statusColor = Colors.grey;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _SettingsCard(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: statusColor.withAlpha(30),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(statusIcon, color: statusColor, size: 20),
+          ),
+          title: Text(
+            task.title ?? task.fileName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            statusText,
+            style: TextStyle(color: statusColor, fontSize: 12),
+          ),
+          trailing:
+              task.status == ImportStatus.matchingWithAI ||
+                  task.status == ImportStatus.extractingMetadata
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: statusColor,
+                  ),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletedTaskCard(ImportTask task) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _SettingsCard(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.green.withAlpha(30),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+              size: 20,
+            ),
+          ),
+          title: Text(
+            task.title ?? task.fileName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            task.artist ?? 'Uploaded successfully',
+            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Icon(Icons.check, color: Colors.green, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFailedTaskCard(ImportTask task) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _SettingsCard(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.red.withAlpha(30),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.redAccent,
+              size: 20,
+            ),
+          ),
+          title: Text(
+            task.title ?? task.fileName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            task.errorMessage ?? 'Upload failed',
+            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white54, size: 20),
+            onPressed: () {
+              task.status = ImportStatus.pending;
+              task.errorMessage = null;
+              task.uploadProgress = 0.0;
+              ImportProcessorService.instance.retryFailedTasks();
+              setState(() {});
+            },
+            tooltip: 'Retry',
+          ),
+        ),
+      ),
     );
   }
 
@@ -2063,15 +3937,25 @@ class _SettingsContentState extends State<_SettingsContent> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_done, size: 18, color: Colors.white),
-          const SizedBox(width: 10),
+          Icon(
+            ExtensionManagerService.instance.isEnabled(extensionId)
+                ? Icons.cloud_done
+                : Icons.cloud_off,
+            size: 18,
+            color: ExtensionManagerService.instance.isEnabled(extensionId)
+                ? Colors.white
+                : Colors.grey,
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Cloud AI Active',
-                  style: TextStyle(
+                Text(
+                  ExtensionManagerService.instance.isEnabled(extensionId)
+                      ? 'Cloud AI Active'
+                      : 'Cloud AI Disabled',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -2084,6 +3968,25 @@ class _SettingsContentState extends State<_SettingsContent> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: ExtensionManagerService.instance.isEnabled(extensionId),
+            onChanged: (value) async {
+              await ExtensionManagerService.instance.setEnabled(
+                extensionId,
+                value,
+              );
+              if (value) {
+                // If enabled, trigger a scan of the import folder
+                ImportWatcherService.instance.checkExistingFiles();
+              }
+              setState(() {});
+            },
+            activeColor: Colors.white,
+            activeTrackColor: Colors.white.withOpacity(0.5),
+            inactiveThumbColor: Colors.grey[400],
+            inactiveTrackColor: Colors.grey[800],
           ),
         ],
       ),
@@ -2281,13 +4184,227 @@ class _SettingsContentState extends State<_SettingsContent> {
         _SectionHeader('Session'),
         _SettingsCard(
           child: ListTile(
-            leading: const Icon(Icons.logout, color: Colors.redAccent),
+            leading: _isLoggingOut
+                ? LoadingAnimationWidget.threeArchedCircle(
+                    color: Colors.redAccent,
+                    size: 24,
+                  )
+                : const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text('Log Out', style: TextStyle(color: Colors.white)),
             subtitle: const Text(
               'Sign out of your account on this device',
               style: TextStyle(color: Colors.grey),
             ),
-            onTap: _logout,
+            onTap: _isLoggingOut ? null : _logout,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Discord RPC state
+  bool _isDiscordRpcEnabled = false;
+  bool _isDiscordRpcConnected = false;
+
+  void _initDiscordRpcState() {
+    _isDiscordRpcEnabled = DiscordRpcService.instance.isEnabled;
+    _isDiscordRpcConnected = DiscordRpcService.instance.isConnected;
+  }
+
+  Widget _buildConnectionsContent() {
+    // Initialize state on first build
+    if (!_isDiscordRpcEnabled && DiscordRpcService.instance.isEnabled) {
+      _initDiscordRpcState();
+    }
+
+    final isDesktop = !Platform.isAndroid && !Platform.isIOS;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader('Discord'),
+        _SettingsCard(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Discord logo
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5865F2).withAlpha(30),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.discord,
+                        color: Color(0xFF5865F2),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Discord Rich Presence',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Show what you\'re listening to on Discord',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isDesktop) ...[
+                      // Status indicator
+                      if (_isDiscordRpcEnabled)
+                        Container(
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _isDiscordRpcConnected
+                                ? Colors.green.withAlpha(30)
+                                : Colors.orange.withAlpha(30),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: _isDiscordRpcConnected
+                                      ? Colors.green
+                                      : Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isDiscordRpcConnected
+                                    ? 'Connected'
+                                    : 'Connecting...',
+                                style: TextStyle(
+                                  color: _isDiscordRpcConnected
+                                      ? Colors.green
+                                      : Colors.orange,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Switch(
+                        value: _isDiscordRpcEnabled,
+                        activeColor: const Color(0xFF5865F2),
+                        onChanged: (enabled) async {
+                          if (enabled) {
+                            await DiscordRpcService.instance.enable();
+                          } else {
+                            await DiscordRpcService.instance.disable();
+                          }
+                          setState(() {
+                            _isDiscordRpcEnabled =
+                                DiscordRpcService.instance.isEnabled;
+                            _isDiscordRpcConnected =
+                                DiscordRpcService.instance.isConnected;
+                          });
+                        },
+                      ),
+                    ] else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withAlpha(30),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Desktop only',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
+                if (isDesktop && _isDiscordRpcEnabled) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 16),
+                  // Preview section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Colors.grey,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Your current song will appear in your Discord status when playing music.',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Info about more connections coming
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Icon(Icons.add_link, color: Colors.grey[600], size: 40),
+                const SizedBox(height: 12),
+                Text(
+                  'More connections coming soon',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Spotify, Last.fm, and more',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -2295,51 +4412,410 @@ class _SettingsContentState extends State<_SettingsContent> {
   }
 
   Widget _buildAboutContent() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingsCard(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.music_note,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'KioKuu',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'v1.0.0 (Beta)',
-                      style: TextStyle(color: Colors.grey[500]),
+        // Hero Card
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(
+            vertical: isSmallScreen ? 32 : 48,
+            horizontal: isSmallScreen ? 16 : 24,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 24),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [const Color(0xFF7B68EE).withOpacity(0.15), Colors.black],
+            ),
+            border: Border.all(
+              color: const Color(0xFF7B68EE).withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Logo with Glow
+              Container(
+                width: isSmallScreen ? 80 : 100,
+                height: isSmallScreen ? 80 : 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF7B68EE).withOpacity(0.2),
+                      blurRadius: 40,
+                      spreadRadius: 10,
                     ),
                   ],
+                ),
+                child: Center(
+                  child: SvgPicture.asset(
+                    'assets/images/kiokuu_white.svg',
+                    width: isSmallScreen ? 40 : 50,
+                    height: isSmallScreen ? 40 : 50,
+                    colorFilter: const ColorFilter.mode(
+                      Colors.white,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: isSmallScreen ? 16 : 24),
+              // App Title
+              Text(
+                'KioKuu',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isSmallScreen ? 28 : 36,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Version Badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                ),
+                child: Text(
+                  'v$_appVersion Beta',
+                  style: TextStyle(
+                    color: Colors.grey[300],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'A Place to store your music',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: isSmallScreen ? 13 : 14,
+                  fontWeight: FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(height: isSmallScreen ? 24 : 32),
+
+        _SectionHeader('Connect'),
+
+        // Responsive grid - 2 columns on desktop, 1 column on mobile
+        if (isSmallScreen) ...[
+          SizedBox(
+            width: double.infinity,
+            child: _buildConnectCardMobile(
+              icon: Icons.language,
+              title: 'Website',
+              subtitle: 'kiokuu.app',
+              onTap: () => launchUrl(Uri.parse(AppConfig.websiteUrl)),
+              color: Colors.blueAccent,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: _buildConnectCardMobile(
+              icon: Icons.code,
+              title: 'GitHub',
+              subtitle: 'Source Code',
+              onTap: () => launchUrl(
+                Uri.parse(
+                  'https://github.com/${AppConfig.githubOwner}/${AppConfig.githubRepo}',
+                ),
+              ),
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: _buildConnectCardMobile(
+              icon: Icons.discord,
+              title: 'Discord',
+              subtitle: 'Join Community',
+              onTap: () => launchUrl(Uri.parse(AppConfig.discordInviteUrl)),
+              color: const Color(0xFF5865F2),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: _buildConnectCardMobile(
+              icon: Icons.bug_report_outlined,
+              title: 'Report Issue',
+              subtitle: 'Help us improve',
+              onTap: () => launchUrl(
+                Uri.parse(
+                  'https://github.com/${AppConfig.githubOwner}/${AppConfig.githubRepo}/issues',
+                ),
+              ),
+              color: Colors.amber,
+            ),
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: _buildConnectCard(
+                  icon: Icons.language,
+                  title: 'Website',
+                  subtitle: 'kiokuu.app',
+                  onTap: () => launchUrl(Uri.parse(AppConfig.websiteUrl)),
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildConnectCard(
+                  icon: Icons.code,
+                  title: 'GitHub',
+                  subtitle: 'Source Code',
+                  onTap: () => launchUrl(
+                    Uri.parse(
+                      'https://github.com/${AppConfig.githubOwner}/${AppConfig.githubRepo}',
+                    ),
+                  ),
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildConnectCard(
+                  icon: Icons.discord,
+                  title: 'Discord',
+                  subtitle: 'Join Community',
+                  onTap: () => launchUrl(Uri.parse(AppConfig.discordInviteUrl)),
+                  color: const Color(0xFF5865F2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildConnectCard(
+                  icon: Icons.bug_report_outlined,
+                  title: 'Report Issue',
+                  subtitle: 'Help us improve',
+                  onTap: () => launchUrl(
+                    Uri.parse(
+                      'https://github.com/${AppConfig.githubOwner}/${AppConfig.githubRepo}/issues',
+                    ),
+                  ),
+                  color: Colors.amber,
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        SizedBox(height: isSmallScreen ? 24 : 32),
+
+        _SectionHeader('Legal'),
+        _SettingsCard(
+          child: Column(
+            children: [
+              _buildLegalTile(
+                'Privacy Policy',
+                onTap: () => launchUrl(
+                  Uri.parse(
+                    '${AppConfig.apiBaseUrl.replaceAll('api.', '')}/privacy',
+                  ),
+                ),
+              ),
+              const Divider(height: 1, color: Colors.white12),
+              _buildLegalTile(
+                'Terms of Service',
+                onTap: () => launchUrl(
+                  Uri.parse(
+                    '${AppConfig.apiBaseUrl.replaceAll('api.', '')}/terms',
+                  ),
+                ),
+              ),
+              const Divider(height: 1, color: Colors.white12),
+              _buildLegalTile(
+                'Open Source Licenses',
+                onTap: () => showLicensePage(
+                  context: context,
+                  applicationName: 'KioKuu',
+                  applicationVersion: _appVersion,
+                  applicationIcon: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: SvgPicture.asset(
+                      'assets/images/kiokuu_white.svg',
+                      width: 48,
+                      height: 48,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(height: isSmallScreen ? 32 : 48),
+        Center(
+          child: Opacity(
+            opacity: 0.5,
+            child: Column(
+              children: [
+                const Icon(Icons.favorite, size: 16, color: Colors.redAccent),
+                const SizedBox(height: 8),
+                Text(
+                  'Made with ♥ by KioKuu Team',
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 12),
                 ),
               ],
             ),
           ),
         ),
+        const SizedBox(height: 24),
       ],
+    );
+  }
+
+  Widget _buildConnectCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Mobile version - horizontal layout for compact display
+  Widget _buildConnectCardMobile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: Colors.grey[600], size: 14),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegalTile(String title, {required VoidCallback onTap}) {
+    return ListTile(
+      title: Text(
+        title,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+      trailing: Icon(
+        Icons.arrow_forward_ios,
+        color: Colors.grey[600],
+        size: 14,
+      ),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
     );
   }
 }
@@ -2394,11 +4870,13 @@ class _AppStats extends StatefulWidget {
 
 class _AppStatsState extends State<_AppStats> {
   String _username = '...';
+  String _version = '...';
 
   @override
   void initState() {
     super.initState();
     _loadUsername();
+    _loadVersion();
   }
 
   Future<void> _loadUsername() async {
@@ -2406,6 +4884,15 @@ class _AppStatsState extends State<_AppStats> {
     if (mounted) {
       setState(() {
         _username = username ?? 'Unknown';
+      });
+    }
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _version = packageInfo.version;
       });
     }
   }
@@ -2427,7 +4914,7 @@ class _AppStatsState extends State<_AppStats> {
             ),
           ),
           const SizedBox(height: 12),
-          _StatRow('Client Version', '1.0.0'),
+          _StatRow('Client Version', _version),
           const SizedBox(height: 6),
           _StatRow('Platform', Platform.operatingSystem),
           const SizedBox(height: 6),

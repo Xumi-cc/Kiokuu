@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -259,41 +260,57 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
                             // Buttons row (fixed position)
                             Row(
                               children: [
-                                // Volume button
-                                MouseRegion(
-                                  onEnter: (_) {
-                                    _volumeHideTimer?.cancel();
-                                    setState(() => _showVolumeSlider = true);
+                                // Volume button with mouse wheel support
+                                Listener(
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScrollEvent) {
+                                      // Scroll up = positive delta.dy, scroll down = negative delta.dy
+                                      // We invert it: scroll up should increase volume
+                                      final delta = -event.scrollDelta.dy;
+                                      final volumeChange = delta > 0
+                                          ? 5.0
+                                          : -5.0;
+                                      final newVolume =
+                                          (provider.volume + volumeChange)
+                                              .clamp(0.0, 100.0);
+                                      provider.setVolume(newVolume);
+                                    }
                                   },
-                                  onExit: (_) {
-                                    _volumeHideTimer?.cancel();
-                                    _volumeHideTimer = Timer(
-                                      const Duration(milliseconds: 300),
-                                      () {
-                                        if (mounted) {
-                                          setState(
-                                            () => _showVolumeSlider = false,
-                                          );
+                                  child: MouseRegion(
+                                    onEnter: (_) {
+                                      _volumeHideTimer?.cancel();
+                                      setState(() => _showVolumeSlider = true);
+                                    },
+                                    onExit: (_) {
+                                      _volumeHideTimer?.cancel();
+                                      _volumeHideTimer = Timer(
+                                        const Duration(milliseconds: 300),
+                                        () {
+                                          if (mounted) {
+                                            setState(
+                                              () => _showVolumeSlider = false,
+                                            );
+                                          }
+                                        },
+                                      );
+                                    },
+                                    child: IconButton(
+                                      icon: Icon(
+                                        provider.volume == 0
+                                            ? Icons.volume_off_rounded
+                                            : provider.volume < 50
+                                            ? Icons.volume_down_rounded
+                                            : Icons.volume_up_rounded,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () {
+                                        if (provider.volume > 0) {
+                                          provider.setVolume(0);
+                                        } else {
+                                          provider.setVolume(50);
                                         }
                                       },
-                                    );
-                                  },
-                                  child: IconButton(
-                                    icon: Icon(
-                                      provider.volume == 0
-                                          ? Icons.volume_off_rounded
-                                          : provider.volume < 50
-                                          ? Icons.volume_down_rounded
-                                          : Icons.volume_up_rounded,
-                                      color: Colors.white,
                                     ),
-                                    onPressed: () {
-                                      if (provider.volume > 0) {
-                                        provider.setVolume(0);
-                                      } else {
-                                        provider.setVolume(50);
-                                      }
-                                    },
                                   ),
                                 ),
                                 IconButton(
@@ -305,70 +322,88 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
                                 ),
                               ],
                             ),
-                            // Volume slider (appears below volume button)
+                            // Volume slider (appears below volume button) with mouse wheel support
                             if (_showVolumeSlider)
                               Positioned(
                                 top: 48,
                                 left: 0,
-                                child: MouseRegion(
-                                  onEnter: (_) {
-                                    _volumeHideTimer?.cancel();
+                                child: Listener(
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScrollEvent) {
+                                      // Scroll up = positive delta.dy, scroll down = negative delta.dy
+                                      // We invert it: scroll up should increase volume
+                                      final delta = -event.scrollDelta.dy;
+                                      final volumeChange = delta > 0
+                                          ? 5.0
+                                          : -5.0;
+                                      final newVolume =
+                                          (provider.volume + volumeChange)
+                                              .clamp(0.0, 100.0);
+                                      provider.setVolume(newVolume);
+                                    }
                                   },
-                                  onExit: (_) {
-                                    _volumeHideTimer?.cancel();
-                                    _volumeHideTimer = Timer(
-                                      const Duration(milliseconds: 300),
-                                      () {
-                                        if (mounted) {
-                                          setState(
-                                            () => _showVolumeSlider = false,
-                                          );
-                                        }
-                                      },
-                                    );
-                                  },
-                                  child: Container(
-                                    height: 120,
-                                    width: 48,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF282828),
-                                      borderRadius: BorderRadius.circular(8),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.5),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                    ),
-                                    child: RotatedBox(
-                                      quarterTurns: 3,
-                                      child: SliderTheme(
-                                        data: SliderThemeData(
-                                          trackHeight: 3,
-                                          thumbShape:
-                                              const RoundSliderThumbShape(
-                                                enabledThumbRadius: 6,
-                                              ),
-                                          overlayShape:
-                                              const RoundSliderOverlayShape(
-                                                overlayRadius: 12,
-                                              ),
-                                          activeTrackColor: Colors.white,
-                                          inactiveTrackColor: Colors.white
-                                              .withOpacity(0.3),
-                                          thumbColor: Colors.white,
-                                        ),
-                                        child: Slider(
-                                          value: provider.volume,
-                                          min: 0,
-                                          max: 100,
-                                          onChanged: (value) {
-                                            provider.setVolume(value);
-                                          },
+                                  child: MouseRegion(
+                                    onEnter: (_) {
+                                      _volumeHideTimer?.cancel();
+                                    },
+                                    onExit: (_) {
+                                      _volumeHideTimer?.cancel();
+                                      _volumeHideTimer = Timer(
+                                        const Duration(milliseconds: 300),
+                                        () {
+                                          if (mounted) {
+                                            setState(
+                                              () => _showVolumeSlider = false,
+                                            );
+                                          }
+                                        },
+                                      );
+                                    },
+                                    child: Container(
+                                      height: 120,
+                                      width: 48,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF282828),
+                                        borderRadius: BorderRadius.circular(8),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.5,
+                                            ),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      child: RotatedBox(
+                                        quarterTurns: 3,
+                                        child: SliderTheme(
+                                          data: SliderThemeData(
+                                            trackHeight: 3,
+                                            thumbShape:
+                                                const RoundSliderThumbShape(
+                                                  enabledThumbRadius: 6,
+                                                ),
+                                            overlayShape:
+                                                const RoundSliderOverlayShape(
+                                                  overlayRadius: 12,
+                                                ),
+                                            activeTrackColor: Colors.white,
+                                            inactiveTrackColor: Colors.white
+                                                .withOpacity(0.3),
+                                            thumbColor: Colors.white,
+                                          ),
+                                          child: Slider(
+                                            value: provider.volume,
+                                            min: 0,
+                                            max: 100,
+                                            onChanged: (value) {
+                                              provider.setVolume(value);
+                                            },
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -408,7 +443,7 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
                                   children: [
                                     // Title with Hero for FLIP animation
                                     Hero(
-                                      tag: 'player_title',
+                                      tag: 'player_title_${song.id}',
                                       flightShuttleBuilder:
                                           (
                                             flightContext,
@@ -493,7 +528,7 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
                                         const SizedBox(width: 8),
                                         // Artist with Hero for FLIP animation
                                         Hero(
-                                          tag: 'player_artist',
+                                          tag: 'player_artist_${song.id}',
                                           flightShuttleBuilder:
                                               (
                                                 flightContext,
@@ -686,7 +721,7 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
                                       ),
                                       // Album Art with Hero for FLIP animation
                                       Hero(
-                                        tag: 'player_artwork',
+                                        tag: 'player_artwork_${song.id}',
                                         child: AspectRatio(
                                           aspectRatio: 1,
                                           child: Container(

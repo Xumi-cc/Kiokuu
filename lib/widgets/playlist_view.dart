@@ -859,25 +859,29 @@ class _SoundWaveAnimationState extends State<SoundWaveAnimation>
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(3, (index) {
-        return AnimatedBuilder(
-          animation: _controllers[index],
-          builder: (context, child) {
-            return Container(
-              width: 3,
-              height: 8 + (_controllers[index].value * 10),
-              margin: const EdgeInsets.symmetric(horizontal: 1.5),
-              decoration: BoxDecoration(
-                color: Colors.white, // Pure white for high contrast
-                borderRadius: BorderRadius.circular(2),
-              ),
-            );
-          },
-        );
-      }),
+    // Fixed height container to prevent "dancing"
+    return SizedBox(
+      height: 18, // Max bar height
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end, // Bars grow from bottom
+        children: List.generate(3, (index) {
+          return AnimatedBuilder(
+            animation: _controllers[index],
+            builder: (context, child) {
+              return Container(
+                width: 3,
+                height: 6 + (_controllers[index].value * 12), // 6-18px range
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              );
+            },
+          );
+        }),
+      ),
     );
   }
 }

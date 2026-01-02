@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -75,24 +76,38 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
               return _buildDesktopLayout(context, provider, song);
             }
 
-            // Original mobile layout - UNCHANGED
+            // Mobile layout with album art color
+            final bgColor = provider.backgroundColor ?? Colors.grey[900]!;
+
             return ClipRect(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: GestureDetector(
                   onTap: widget.onTap,
+                  onHorizontalDragEnd: (details) {
+                    // Swipe gestures for prev/next
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! < -500) {
+                        provider.playNext();
+                      } else if (details.primaryVelocity! > 500) {
+                        provider.playPrevious();
+                      }
+                    }
+                  },
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Main player bar container
-                      Container(
+                      // Main player bar container with album color
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
                             colors: [
-                              Colors.white.withOpacity(0.15),
-                              Colors.white.withOpacity(0.08),
+                              bgColor.withOpacity(0.95),
+                              Colors.black.withOpacity(0.85),
                             ],
                           ),
                           border: Border(
@@ -139,7 +154,7 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: [
             // Album Art with animation
@@ -492,10 +507,10 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
       type: MaterialType.transparency,
       child: Container(
         key: ValueKey(song.id),
-        width: 56,
-        height: 56,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           color: Colors.white.withOpacity(0.1),
           image: song.artworkPath != null
               ? (song.artworkPath!.startsWith('http')
@@ -513,7 +528,7 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
             ? Icon(
                 Icons.music_note_rounded,
                 color: Colors.white.withOpacity(0.5),
-                size: 28,
+                size: 22,
               )
             : null,
       ),
@@ -521,7 +536,7 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
 
     if (!widget.enableHero) return artworkContent;
 
-    return Hero(tag: 'player_artwork', child: artworkContent);
+    return Hero(tag: 'player_artwork_${song.id}', child: artworkContent);
   }
 
   // Helper method to build title with conditional Hero
@@ -543,7 +558,7 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
     if (!widget.enableHero) return titleContent;
 
     return Hero(
-      tag: 'player_title',
+      tag: 'player_title_${song.id}',
       flightShuttleBuilder:
           (
             flightContext,
@@ -587,7 +602,7 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
     if (!widget.enableHero) return artistContent;
 
     return Hero(
-      tag: 'player_artist',
+      tag: 'player_artist_${song.id}',
       flightShuttleBuilder:
           (
             flightContext,
@@ -634,44 +649,36 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
 
   // Helper method for Play/Pause button with conditional Hero
   Widget _buildPlayPauseButton(MusicProvider provider) {
-    final button = Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          onTap: provider.isLoading ? null : provider.togglePlayPause,
-          customBorder: const CircleBorder(),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: provider.isLoading
-                  ? SizedBox(
-                      key: ValueKey(
-                        'compact_hero_loading_${widget.enableHero}',
-                      ),
-                      width: 24,
-                      height: 24,
-                      child: LoadingAnimationWidget.threeArchedCircle(
-                        color: Colors.black,
-                        size: 24,
-                      ),
-                    )
-                  : Icon(
-                      key: ValueKey(
-                        'compact_hero_${widget.enableHero}_${provider.isPlaying ? "pause" : "play"}',
-                      ),
-                      provider.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: Colors.black,
+    final button = Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: provider.isLoading ? null : provider.togglePlayPause,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: provider.isLoading
+                ? SizedBox(
+                    key: ValueKey('compact_hero_loading_${widget.enableHero}'),
+                    width: 24,
+                    height: 24,
+                    child: LoadingAnimationWidget.threeArchedCircle(
+                      color: Colors.white,
                       size: 24,
                     ),
-            ),
+                  )
+                : Icon(
+                    key: ValueKey(
+                      'compact_hero_${widget.enableHero}_${provider.isPlaying ? "pause" : "play"}',
+                    ),
+                    provider.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
           ),
         ),
       ),
@@ -1015,36 +1022,60 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
                       ),
                       const SizedBox(width: 8),
                     ],
-                    // Volume icon + slider
-                    Icon(
-                      Icons.volume_up_rounded,
-                      color: Colors.white.withOpacity(0.7),
-                      size: 20,
-                    ),
-                    SizedBox(
-                      width: 100,
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 6,
+                    // Volume icon + slider with mouse wheel support
+                    Listener(
+                      onPointerSignal: (event) {
+                        if (event is PointerScrollEvent) {
+                          // Scroll up = positive delta.dy, scroll down = negative delta.dy
+                          // We invert it: scroll up should increase volume
+                          final delta = -event.scrollDelta.dy;
+                          final volumeChange = delta > 0 ? 5.0 : -5.0;
+                          final newVolume = (provider.volume + volumeChange)
+                              .clamp(0.0, 100.0);
+                          provider.setVolume(newVolume);
+                        }
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            provider.volume == 0
+                                ? Icons.volume_off_rounded
+                                : provider.volume < 50
+                                ? Icons.volume_down_rounded
+                                : Icons.volume_up_rounded,
+                            color: Colors.white.withOpacity(0.7),
+                            size: 20,
                           ),
-                          overlayShape: const RoundSliderOverlayShape(
-                            overlayRadius: 12,
+                          SizedBox(
+                            width: 100,
+                            child: SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 6,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 12,
+                                ),
+                                activeTrackColor: Colors.white,
+                                inactiveTrackColor: Colors.white.withOpacity(
+                                  0.2,
+                                ),
+                                thumbColor: Colors.white,
+                                overlayColor: Colors.white.withOpacity(0.1),
+                              ),
+                              child: Slider(
+                                value: provider.volume,
+                                min: 0,
+                                max: 100,
+                                onChanged: (value) {
+                                  provider.setVolume(value);
+                                },
+                              ),
+                            ),
                           ),
-                          activeTrackColor: Colors.white,
-                          inactiveTrackColor: Colors.white.withOpacity(0.2),
-                          thumbColor: Colors.white,
-                          overlayColor: Colors.white.withOpacity(0.1),
-                        ),
-                        child: Slider(
-                          value: provider.volume,
-                          min: 0,
-                          max: 100,
-                          onChanged: (value) {
-                            provider.setVolume(value);
-                          },
-                        ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),

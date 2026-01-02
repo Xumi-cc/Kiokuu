@@ -2800,40 +2800,268 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   /// Build skeleton loading state for playlist detail
   Widget _buildPlaylistDetailSkeleton() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 800;
+
+    // Mobile skeleton - centered layout
+    if (isMobile) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Header skeleton
+            const SizedBox(height: 40),
+            // Playlist cover skeleton
+            const SkeletonLoader(width: 180, height: 180, borderRadius: 12),
+            const SizedBox(height: 24),
+            // Title skeleton
+            const SkeletonLoader(width: 200, height: 24, borderRadius: 4),
+            const SizedBox(height: 8),
+            // Subtitle skeleton
+            const SkeletonLoader(width: 140, height: 14, borderRadius: 4),
+            const SizedBox(height: 24),
+            // Action buttons skeleton
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                SkeletonLoader(width: 80, height: 36, borderRadius: 18),
+                SizedBox(width: 16),
+                SkeletonLoader(width: 48, height: 48, isCircle: true),
+                SizedBox(width: 16),
+                SkeletonLoader(width: 80, height: 36, borderRadius: 18),
+              ],
+            ),
+            const SizedBox(height: 32),
+            // Song list skeleton
+            ...List.generate(
+              6,
+              (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SkeletonSongItem(index: index),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Desktop skeleton - side-by-side layout matching actual desktop view
+    final double coverSize = screenWidth > 1100 ? 200 : 150;
+    final double horizontalPadding = screenWidth > 1100 ? 32 : 20;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header skeleton
-          const SizedBox(height: 40),
-          // Playlist cover skeleton
-          const SkeletonLoader(width: 180, height: 180, borderRadius: 12),
-          const SizedBox(height: 24),
-          // Title skeleton
-          const SkeletonLoader(width: 200, height: 24, borderRadius: 4),
-          const SizedBox(height: 8),
-          // Subtitle skeleton
-          const SkeletonLoader(width: 140, height: 14, borderRadius: 4),
-          const SizedBox(height: 24),
-          // Action buttons skeleton
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              SkeletonLoader(width: 80, height: 36, borderRadius: 18),
-              SizedBox(width: 16),
-              SkeletonLoader(width: 48, height: 48, isCircle: true),
-              SizedBox(width: 16),
-              SkeletonLoader(width: 80, height: 36, borderRadius: 18),
-            ],
+          // Header section with gradient background
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: 20,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top spacing (where nav row used to be)
+                const SizedBox(height: 48),
+
+                // Main Header Content - Row with cover and details
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Cover Art skeleton
+                    SkeletonLoader(
+                      width: coverSize,
+                      height: coverSize,
+                      borderRadius: 12,
+                    ),
+                    SizedBox(width: screenWidth > 1000 ? 32 : 20),
+
+                    // Playlist Details skeleton
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          // "Playlist" label
+                          const SkeletonLoader(
+                            width: 80,
+                            height: 14,
+                            borderRadius: 4,
+                          ),
+                          const SizedBox(height: 8),
+                          // Title skeleton
+                          SkeletonLoader(
+                            width: screenWidth > 1100 ? 350 : 250,
+                            height: screenWidth > 1100 ? 48 : 32,
+                            borderRadius: 4,
+                          ),
+                          const SizedBox(height: 16),
+                          // Metadata row skeleton (username • year • duration)
+                          Row(
+                            children: const [
+                              SkeletonLoader(
+                                width: 100,
+                                height: 14,
+                                borderRadius: 4,
+                              ),
+                              SizedBox(width: 12),
+                              SkeletonLoader(
+                                width: 40,
+                                height: 14,
+                                borderRadius: 4,
+                              ),
+                              SizedBox(width: 12),
+                              SkeletonLoader(
+                                width: 60,
+                                height: 14,
+                                borderRadius: 4,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+
+                          // Action Buttons Row skeleton
+                          Row(
+                            children: const [
+                              // Play button skeleton
+                              SkeletonLoader(
+                                width: 110,
+                                height: 48,
+                                borderRadius: 24,
+                              ),
+                              SizedBox(width: 24),
+                              // Shuffle icon
+                              SkeletonLoader(
+                                width: 40,
+                                height: 40,
+                                isCircle: true,
+                              ),
+                              SizedBox(width: 16),
+                              // Like icon
+                              SkeletonLoader(
+                                width: 40,
+                                height: 40,
+                                isCircle: true,
+                              ),
+                              SizedBox(width: 8),
+                              // Download icon
+                              SkeletonLoader(
+                                width: 40,
+                                height: 40,
+                                isCircle: true,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 32),
-          // Song list skeleton
-          ...List.generate(
-            6,
-            (index) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SkeletonSongItem(index: index),
+
+          // Table header skeleton
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[800]!, width: 1),
+              ),
+            ),
+            child: Row(
+              children: const [
+                SizedBox(width: 40), // # column
+                SkeletonLoader(width: 20, height: 12, borderRadius: 4),
+                SizedBox(width: 16),
+                Expanded(
+                  flex: 3,
+                  child: SkeletonLoader(width: 40, height: 12, borderRadius: 4),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: SkeletonLoader(width: 50, height: 12, borderRadius: 4),
+                ),
+                SkeletonLoader(width: 30, height: 12, borderRadius: 4),
+                SizedBox(width: 40),
+              ],
+            ),
+          ),
+
+          // Song list skeleton (desktop style with row layout)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: Column(
+              children: List.generate(
+                8,
+                (index) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      // Row number
+                      SizedBox(
+                        width: 40,
+                        child: SkeletonLoader(
+                          width: 16,
+                          height: 14,
+                          borderRadius: 4,
+                        ),
+                      ),
+                      // Title column (with album art)
+                      Expanded(
+                        flex: 3,
+                        child: Row(
+                          children: [
+                            const SkeletonLoader(
+                              width: 40,
+                              height: 40,
+                              borderRadius: 4,
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SkeletonLoader(
+                                  width: 120 + (index % 80).toDouble(),
+                                  height: 14,
+                                  borderRadius: 4,
+                                ),
+                                const SizedBox(height: 4),
+                                SkeletonLoader(
+                                  width: 80 + (index % 40).toDouble(),
+                                  height: 12,
+                                  borderRadius: 4,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Artist column
+                      Expanded(
+                        flex: 2,
+                        child: SkeletonLoader(
+                          width: 100 + (index % 50).toDouble(),
+                          height: 14,
+                          borderRadius: 4,
+                        ),
+                      ),
+                      // Duration
+                      const SkeletonLoader(
+                        width: 40,
+                        height: 14,
+                        borderRadius: 4,
+                      ),
+                      const SizedBox(width: 40),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -3363,37 +3591,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Navigation Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new,
-                        size: 20,
-                        color: Colors.white,
-                      ),
-                      onPressed: () => Navigator.maybePop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                    if (!_playlist!.isSystem)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.more_horiz,
-                          size: 24,
-                          color: Colors.white,
-                        ),
-                        onPressed: () => _showPlaylistOptions(_playlist!),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      )
-                    else
-                      const SizedBox(
-                        width: 24,
-                      ), // Placeholder for system playlists
-                  ],
-                ),
+                // Top spacing (where nav row used to be)
                 const SizedBox(height: 48),
 
                 // Main Header Content

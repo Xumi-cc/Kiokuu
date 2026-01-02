@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:animations/animations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/upload_song_sheet.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -82,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Color> _ambientColors = []; // Colors for ambient background
   bool _showAllPlaylists = false;
   String? _userPhotoUrl;
+  String? _userName;
 
   // Analytics data
   List<SongStats> _topSongs = [];
@@ -459,12 +459,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _loadData();
         }
       },
-      onAIRequired: (tasks) {
-        if (mounted && !_waitingForAI) {
-          setState(() => _waitingForAI = true);
-          _showAIDownloadPrompt();
-        }
-      },
       onReviewNeeded: (task) {
         // Don't auto-show the review sheet - it's annoying
         // Just update state so we can show a badge on the import review page
@@ -634,22 +628,21 @@ class _HomeScreenState extends State<HomeScreen> {
       ]);
 
       if (mounted) {
-        final playlists = List<Map<String, dynamic>>.from(results[0]);
-
-        // Cache playlist names for offline mode
-        final prefs = await SharedPreferences.getInstance();
-        for (final pl in playlists) {
-          final id = pl['id'] as String?;
-          final name = pl['name'] as String?;
-          if (id != null && name != null) {
-            await prefs.setString('playlist_name_$id', name);
-          }
-        }
-
         setState(() {
-          _sidebarPlaylists = playlists;
+          _sidebarPlaylists = List<Map<String, dynamic>>.from(results[0]);
           _sidebarLikedPlaylists = List<Map<String, dynamic>>.from(results[1]);
           _isPlaylistsLoading = false;
+        });
+
+        // Cache playlist names for offline mode (background task)
+        SharedPreferences.getInstance().then((prefs) {
+          for (final pl in results[0]) {
+            final id = pl['id'] as String?;
+            final name = pl['name'] as String?;
+            if (id != null && name != null) {
+              prefs.setString('playlist_name_$id', name);
+            }
+          }
         });
       }
     } catch (e) {
@@ -847,12 +840,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUserProfile() async {
     final photoUrl = await _storage.read(key: 'photo_url');
-    if (mounted && photoUrl != null) {
-      setState(() => _userPhotoUrl = photoUrl);
+    final username = await _storage.read(key: 'username');
+
+    if (mounted) {
+      setState(() {
+        if (photoUrl != null) _userPhotoUrl = photoUrl;
+        if (username != null) _userName = username;
+      });
 
       // Cache for offline mode
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_photo_url', photoUrl);
+      if (photoUrl != null) await prefs.setString('user_photo_url', photoUrl);
+      if (username != null) await prefs.setString('username', username);
     }
   }
 
@@ -892,6 +891,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _isLoading = true;
       _isFriendsLoading = true;
       _isAnalyticsLoading = true;
+      _isPlaylistsLoading = true;
+      _sidebarPlaylists = []; // Clear to show skeletons
     });
 
     // Refetch all data
@@ -1517,6 +1518,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         artistId: _selectedArtistId!,
                         artistName: _selectedArtistName ?? '',
                         artistImage: _selectedArtistImage,
+                        onBackPressed: () {
+                          setState(() {
+                            _selectedArtistId = null;
+                            _selectedArtistName = null;
+                            _selectedArtistImage = null;
+                          });
+                        },
                       )
                     : _selectedPlaylistId != null && isLargeScreen
                     ? _buildPlaylistDetailContent()
@@ -3462,59 +3470,41 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
 
-          // Desktop: Navigation arrows + Search bar
+          // Desktop: Search bar
           if (isLargeScreen) ...[
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.chevron_left, color: Colors.white),
-                onPressed: () {},
-                padding: EdgeInsets.zero,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.chevron_right, color: Colors.grey),
-                onPressed: () {},
-                padding: EdgeInsets.zero,
-              ),
-            ),
-            const SizedBox(width: 24),
             SizedBox(
               width: 400,
               child: Container(
-                height: 44,
+                height: 38,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Icon(Icons.search, color: Colors.black54, size: 20),
+                    const Icon(Icons.search, color: Colors.black54, size: 18),
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
+                        textAlignVertical: TextAlignVertical.center,
                         decoration: const InputDecoration(
                           hintText: 'What do you want to listen to?',
                           border: InputBorder.none,
+                          isDense: true,
                           hintStyle: TextStyle(
                             color: Colors.black54,
                             fontSize: 14,
                           ),
-                          contentPadding: EdgeInsets.zero,
+                          contentPadding: EdgeInsets.only(
+                            bottom: 2,
+                          ), // Visual nudge
                         ),
                         style: const TextStyle(
                           color: Colors.black,
                           fontSize: 14,
+                          height: 1.0,
                         ),
                         onSubmitted: (val) {},
                       ),
@@ -3586,7 +3576,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Desktop only: Refresh button (mobile uses pull-to-refresh)
           if (isLargeScreen)
             IconButton(
-              onPressed: _loadData,
+              onPressed: _onPullToRefresh,
               icon: const Icon(Icons.refresh),
               color: Colors.white,
               tooltip: 'Refresh',
@@ -3631,7 +3621,224 @@ class _HomeScreenState extends State<HomeScreen> {
         isEmpty: _friends.isEmpty,
       );
     }
-    return const ExpandingHeroSection();
+    return _buildWelcomeHero();
+  }
+
+  Widget _buildWelcomeHero() {
+    final hour = DateTime.now().hour;
+    String greeting = 'Hello';
+    if (hour < 5)
+      greeting = 'Good evening';
+    else if (hour < 12)
+      greeting = 'Good morning';
+    else if (hour < 18)
+      greeting = 'Good afternoon';
+    else
+      greeting = 'Good evening';
+
+    // Pick a featured item
+    String title = 'Liked Songs';
+    String subtitle = 'Your favorite tracks';
+    String? imageUrl;
+    String? playlistId;
+
+    if (_sidebarPlaylists.isNotEmpty) {
+      final index = DateTime.now().minute % _sidebarPlaylists.length;
+      final pl = _sidebarPlaylists[index];
+      title = pl['name'] as String? ?? 'Playlist';
+      subtitle = '${pl['song_count'] ?? 0} songs • Playlist';
+      playlistId = pl['id'] as String?;
+      final urls = (pl['cover_image_urls'] as List?)?.cast<String>() ?? [];
+      final imgs = (pl['cover_images'] as List?)?.cast<String>() ?? [];
+      final effectiveCovers = urls.isNotEmpty ? urls : imgs;
+      if (effectiveCovers.isNotEmpty) imageUrl = effectiveCovers.first;
+    } else if (_likedSongs.isNotEmpty) {
+      subtitle = '${_likedSongs.length} songs • Collection';
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        final bool isCompact = width < 1000;
+
+        // Dynamic sizing based on width
+        final double bannerHeight = isCompact
+            ? 210
+            : 280; // Increased to prevent overflow
+        final double greetingSize = isCompact ? 26 : 34;
+        final double titleSize = isCompact ? 28 : 40;
+        final double padding = isCompact ? 20 : 32;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$greeting, ${_userName ?? 'User'}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: greetingSize,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.6,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Welcome back',
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Banner
+            Container(
+              height: bannerHeight,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFF181818),
+                image: imageUrl != null
+                    ? DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.center,
+                        colorFilter: ColorFilter.mode(
+                          Colors.black.withOpacity(0.45),
+                          BlendMode.darken,
+                        ),
+                      )
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Stack(
+                  children: [
+                    // Stronger gradient for text readability
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Colors.black.withOpacity(0.95),
+                            Colors.black.withOpacity(0.6),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.45, 1.0],
+                        ),
+                      ),
+                    ),
+
+                    // Content
+                    Padding(
+                      padding: EdgeInsets.all(padding),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment:
+                            MainAxisAlignment.center, // Centered vertically
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'FEATURED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.bold,
+                              height: 1.1,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              if (playlistId != null) {
+                                setState(() {
+                                  _selectedPlaylistId = playlistId;
+                                  _selectedArtistId = null;
+                                });
+                              } else {
+                                _openLikedSongsPlaylist();
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.black,
+                              size: 22,
+                            ),
+                            label: const Text(
+                              'Explore Now',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildSectionTitle(String title, {VoidCallback? onViewAll}) {
@@ -3675,22 +3882,22 @@ class _HomeScreenState extends State<HomeScreen> {
     // Calculate dynamic crossAxisCount (same as actual grid below)
     double width = MediaQuery.of(context).size.width;
     double contentWidth = width > 800 ? width - 250 : width;
-    int crossAxisCount = (contentWidth / 180).floor();
+    int crossAxisCount = (contentWidth / 220).floor();
     if (crossAxisCount < 2) crossAxisCount = 2;
-    if (crossAxisCount > 5) crossAxisCount = 5;
+    if (crossAxisCount > 8) crossAxisCount = 8;
 
     // Show skeleton while loading
     if (_isPlaylistsLoading && _sidebarPlaylists.isEmpty) {
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 200,
           crossAxisSpacing: 24,
           mainAxisSpacing: 24,
           childAspectRatio: 0.75,
         ),
-        itemCount: crossAxisCount, // Show one row of skeletons
+        itemCount: 4, // Reasonable default for skeleton
         itemBuilder: (_, __) => const SkeletonPlaylistGridCard(),
       );
     }
@@ -3731,8 +3938,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 200,
         crossAxisSpacing: 24,
         mainAxisSpacing: 24,
         childAspectRatio: 0.75,

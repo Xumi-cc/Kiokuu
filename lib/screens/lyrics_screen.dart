@@ -19,13 +19,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
   bool _isLoading = true;
   String? _error;
   String? _currentSongId;
-  
+
   // For synced lyrics
   final ScrollController _scrollController = ScrollController();
   int _currentLineIndex = -1;
   bool _userIsScrolling = false;
   bool _isScrollAnimating = false; // Prevent overlapping animations
-  
+
   // GlobalKeys for each lyric line (to use with Scrollable.ensureVisible)
   final Map<int, GlobalKey> _lineKeys = {};
 
@@ -64,7 +64,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
     }
   }
 
-  Future<void> _fetchLyrics(String title, String artist, {int? durationSeconds}) async {
+  Future<void> _fetchLyrics(
+    String title,
+    String artist, {
+    int? durationSeconds,
+  }) async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -120,7 +124,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
   void _scrollToLine(int index) async {
     // Prevent overlapping animations (Echo-Music approach)
     if (_isScrollAnimating) return;
-    
+
     // Try to use GlobalKey to accurately scroll to the item
     final key = _lineKeys[index];
     if (key?.currentContext != null) {
@@ -129,7 +133,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
         await Scrollable.ensureVisible(
           key!.currentContext!,
           alignment: 0.4, // 0.4 = slightly above center (40% from top)
-          duration: const Duration(milliseconds: 500), // Reduced for snappier feel
+          duration: const Duration(
+            milliseconds: 500,
+          ), // Reduced for snappier feel
           curve: Curves.easeOutCubic,
         );
       } finally {
@@ -137,10 +143,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
       }
       return;
     }
-    
+
     // Fallback: Use estimated offset if key not available yet
     if (!_scrollController.hasClients) return;
-    
+
     const double estimatedLineHeight = 85.0;
     double targetOffset = index * estimatedLineHeight;
 
@@ -163,14 +169,14 @@ class _LyricsScreenState extends State<LyricsScreen> {
       body: Consumer<MusicProvider>(
         builder: (context, provider, _) {
           final currentSong = provider.currentSong;
-          
+
           // Fetch lyrics when song changes
           if (currentSong != null && currentSong.id != _currentSongId) {
             _currentSongId = currentSong.id;
             _currentLineIndex = -1;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _fetchLyrics(
-                currentSong.title, 
+                currentSong.title,
                 currentSong.artist,
                 durationSeconds: provider.totalDuration.inSeconds,
               );
@@ -184,12 +190,12 @@ class _LyricsScreenState extends State<LyricsScreen> {
               _updateCurrentLine(provider.currentPosition, lines);
             });
           }
-          
+
           return Stack(
             children: [
               // 1. Background (Gradient)
               _buildBackground(provider),
-              
+
               // 2. Main Layout
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -219,7 +225,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
                               color: Colors.black.withValues(alpha: 0.3),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.close_fullscreen, size: 24, color: Colors.white),
+                            child: const Icon(
+                              Icons.close_fullscreen,
+                              size: 24,
+                              color: Colors.white,
+                            ),
                           ),
                           onPressed: _exitFullscreen,
                           tooltip: 'Exit Fullscreen',
@@ -260,31 +270,33 @@ class _LyricsScreenState extends State<LyricsScreen> {
     );
   }
 
-  Widget _buildSplitLayout(BuildContext context, MusicProvider provider, dynamic song) {
+  Widget _buildSplitLayout(
+    BuildContext context,
+    MusicProvider provider,
+    dynamic song,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 60),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Left Side: Song Info & Controls
-          Expanded(
-            flex: 9, 
-            child: _buildLeftPanel(context, provider, song),
-          ),
-          
+          Expanded(flex: 9, child: _buildLeftPanel(context, provider, song)),
+
           const SizedBox(width: 60),
-          
+
           // Right Side: Scrolling Lyrics
-          Expanded(
-            flex: 11, 
-            child: _buildRightPanel(context, provider, song),
-          ),
+          Expanded(flex: 11, child: _buildRightPanel(context, provider, song)),
         ],
       ),
     );
   }
 
-  Widget _buildMobileLayout(BuildContext context, MusicProvider provider, dynamic song) {
+  Widget _buildMobileLayout(
+    BuildContext context,
+    MusicProvider provider,
+    dynamic song,
+  ) {
     return SafeArea(
       child: Column(
         children: [
@@ -307,7 +319,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                     ),
                   ),
                 ),
-                
+
                 // Title area
                 Expanded(
                   child: Column(
@@ -336,7 +348,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                     ],
                   ),
                 ),
-                
+
                 // Menu button (placeholder for future menu actions)
                 GestureDetector(
                   onTap: () {
@@ -356,12 +368,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
               ],
             ),
           ),
-          
+
           // Lyrics Area with fading edges
-          Expanded(
-            child: _buildMobileLyricsPanel(context, provider, song),
-          ),
-          
+          Expanded(child: _buildMobileLyricsPanel(context, provider, song)),
+
           // Bottom Controls
           _buildMobileBottomControls(context, provider),
         ],
@@ -370,14 +380,22 @@ class _LyricsScreenState extends State<LyricsScreen> {
   }
 
   /// Mobile-specific lyrics panel with fading edges and depth effects
-  Widget _buildMobileLyricsPanel(BuildContext context, MusicProvider provider, dynamic song) {
+  Widget _buildMobileLyricsPanel(
+    BuildContext context,
+    MusicProvider provider,
+    dynamic song,
+  ) {
     if (song == null) return const SizedBox();
-    
+
     // Loading State
     if (_isLoading) {
-      return Center(child: CircularProgressIndicator(color: Colors.white.withValues(alpha: 0.5)));
+      return Center(
+        child: CircularProgressIndicator(
+          color: Colors.white.withValues(alpha: 0.5),
+        ),
+      );
     }
-    
+
     // No Lyrics or Error
     if (_error != null || _lyrics == null || !_lyrics!.hasAnyLyrics) {
       return Center(
@@ -395,13 +413,17 @@ class _LyricsScreenState extends State<LyricsScreen> {
         ),
       );
     }
-    
+
     // Instrumental
     if (_lyrics!.instrumental) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.piano, size: 64, color: Colors.white.withValues(alpha: 0.5)),
+          Icon(
+            Icons.piano,
+            size: 64,
+            color: Colors.white.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 24),
           Text(
             'Instrumental',
@@ -418,7 +440,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
     // Synced Lyrics with depth effects
     if (_lyrics!.hasSyncedLyrics) {
       final lines = _lyrics!.parsedSyncedLyrics;
-      
+
       return ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(
@@ -452,7 +474,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
             return false;
           },
           child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
             child: ListView.builder(
               controller: _scrollController,
               itemCount: lines.length,
@@ -465,10 +489,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 final line = lines[index];
                 final isCurrent = index == _currentLineIndex;
                 final distance = (index - _currentLineIndex).abs();
-                
+
                 // Create/retrieve GlobalKey for this line
                 _lineKeys.putIfAbsent(index, () => GlobalKey());
-                
+
                 // Calculate opacity based on distance from current line (Echo-Music style)
                 double opacity;
                 if (isCurrent) {
@@ -480,7 +504,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 } else {
                   opacity = 0.2;
                 }
-                
+
                 // Calculate scale based on distance (depth effect)
                 double scale;
                 if (isCurrent) {
@@ -490,13 +514,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 } else {
                   scale = 0.9;
                 }
-                
+
                 // Get next line timestamp for word timing calculation
-                final nextLineTimestamp = index + 1 < lines.length 
-                    ? lines[index + 1].timestamp 
+                final nextLineTimestamp = index + 1 < lines.length
+                    ? lines[index + 1].timestamp
                     : null;
                 final words = line.parseWords(nextLineTimestamp);
-                
+
                 return RepaintBoundary(
                   child: GestureDetector(
                     key: _lineKeys[index],
@@ -508,7 +532,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
                       child: Opacity(
                         opacity: opacity,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 10,
+                          ),
                           child: Wrap(
                             alignment: WrapAlignment.center,
                             children: words.map((word) {
@@ -530,7 +557,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         ),
       );
     }
-    
+
     // Plain Lyrics with fading edges
     return ShaderMask(
       shaderCallback: (Rect bounds) {
@@ -574,13 +601,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
     final isWordPast = word.isPast(position);
     final isWordActive = word.isActive(position);
     final progress = word.getProgress(position);
-    
+
     final highlightedColor = Colors.white;
     final dimmedColor = Colors.white.withValues(alpha: 0.5);
-    
+
     // Font size - larger for current line
     final fontSize = isCurrent ? 26.0 : 22.0;
-    
+
     Color textColor;
     if (isWordPast) {
       textColor = highlightedColor;
@@ -589,7 +616,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
     } else {
       textColor = dimmedColor;
     }
-    
+
     // For the currently active word, show a sweeping highlight effect
     if (isWordActive && isCurrent) {
       return Padding(
@@ -626,7 +653,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         ),
       );
     }
-    
+
     // Regular word (past or future)
     return Padding(
       padding: const EdgeInsets.only(right: 6),
@@ -643,7 +670,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
   }
 
   /// Bottom controls with playback buttons (Echo-Music style)
-  Widget _buildMobileBottomControls(BuildContext context, MusicProvider provider) {
+  Widget _buildMobileBottomControls(
+    BuildContext context,
+    MusicProvider provider,
+  ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
       child: Column(
@@ -651,9 +681,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
         children: [
           // Progress Bar
           _buildProgressBar(context, provider),
-          
+
           const SizedBox(height: 16),
-          
+
           // Playback Controls Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -670,15 +700,18 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 ),
                 tooltip: 'Shuffle',
               ),
-              
+
               // Previous button
               IconButton(
                 onPressed: provider.playPrevious,
                 iconSize: 28,
-                icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.skip_previous_rounded,
+                  color: Colors.white,
+                ),
                 tooltip: 'Previous',
               ),
-              
+
               // Play/Pause button
               Container(
                 height: 56,
@@ -691,13 +724,15 @@ class _LyricsScreenState extends State<LyricsScreen> {
                   onPressed: provider.togglePlayPause,
                   iconSize: 28,
                   icon: Icon(
-                    provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    provider.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
                     color: Colors.black,
                   ),
                   tooltip: provider.isPlaying ? 'Pause' : 'Play',
                 ),
               ),
-              
+
               // Next button
               IconButton(
                 onPressed: provider.playNext,
@@ -705,7 +740,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
                 tooltip: 'Next',
               ),
-              
+
               // Repeat button
               IconButton(
                 onPressed: provider.toggleRepeat,
@@ -722,138 +757,169 @@ class _LyricsScreenState extends State<LyricsScreen> {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget _buildLeftPanel(BuildContext context, MusicProvider provider, dynamic song) {
+  Widget _buildLeftPanel(
+    BuildContext context,
+    MusicProvider provider,
+    dynamic song,
+  ) {
     if (song == null) return const SizedBox();
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const Spacer(),
-        
-        // Album Art (Constrained size)
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 350, maxWidth: 350),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 40,
-                    offset: const Offset(0, 20),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Album Art (Constrained size)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: 350,
+                    maxWidth: 350,
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: song.artworkPath != null
-                    ? (song.artworkPath!.startsWith('http')
-                        ? Image.network(song.artworkPath!, fit: BoxFit.cover)
-                        : Image.file(File(song.artworkPath!), fit: BoxFit.cover))
-                    : Container(
-                        color: Colors.grey[900],
-                        child: const Icon(Icons.music_note, size: 80, color: Colors.white54),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 40,
+                            offset: const Offset(0, 20),
+                          ),
+                        ],
                       ),
-              ),
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 32),
-        
-        // Title (Centered)
-        Text(
-          song.title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.5,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        
-        const SizedBox(height: 8),
-        
-        // Artist (Centered)
-        Text(
-          song.artist,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        
-        const SizedBox(height: 24),
-        
-        // Progress Bar
-        _buildProgressBar(context, provider),
-        
-        const SizedBox(height: 24),
-        
-        // Playback Controls (Prev, Play/Pause, Next)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              onPressed: provider.playPrevious,
-              iconSize: 32,
-              icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
-              tooltip: 'Previous',
-            ),
-            const SizedBox(width: 24),
-            Container(
-              height: 64,
-              width: 64,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-              ),
-              child: IconButton(
-                onPressed: provider.togglePlayPause,
-                iconSize: 32,
-                icon: Icon(
-                  provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.black,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: song.artworkPath != null
+                            ? (song.artworkPath!.startsWith('http')
+                                  ? Image.network(
+                                      song.artworkPath!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      File(song.artworkPath!),
+                                      fit: BoxFit.cover,
+                                    ))
+                            : Container(
+                                color: Colors.grey[900],
+                                child: const Icon(
+                                  Icons.music_note,
+                                  size: 80,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
                 ),
-                tooltip: provider.isPlaying ? 'Pause' : 'Play',
-              ),
+
+                const SizedBox(height: 32),
+
+                // Title (Centered)
+                Text(
+                  song.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const SizedBox(height: 8),
+
+                // Artist (Centered)
+                Text(
+                  song.artist,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const SizedBox(height: 24),
+
+                // Progress Bar
+                _buildProgressBar(context, provider),
+
+                const SizedBox(height: 24),
+
+                // Playback Controls (Prev, Play/Pause, Next)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: provider.playPrevious,
+                      iconSize: 32,
+                      icon: const Icon(
+                        Icons.skip_previous_rounded,
+                        color: Colors.white,
+                      ),
+                      tooltip: 'Previous',
+                    ),
+                    const SizedBox(width: 24),
+                    Container(
+                      height: 64,
+                      width: 64,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                      ),
+                      child: IconButton(
+                        onPressed: provider.togglePlayPause,
+                        iconSize: 32,
+                        icon: Icon(
+                          provider.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: Colors.black,
+                        ),
+                        tooltip: provider.isPlaying ? 'Pause' : 'Play',
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    IconButton(
+                      onPressed: provider.playNext,
+                      iconSize: 32,
+                      icon: const Icon(
+                        Icons.skip_next_rounded,
+                        color: Colors.white,
+                      ),
+                      tooltip: 'Next',
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 24),
-            IconButton(
-              onPressed: provider.playNext,
-              iconSize: 32,
-              icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
-              tooltip: 'Next',
-            ),
-          ],
-        ),
-        
-        const Spacer(),
-      ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildProgressBar(BuildContext context, MusicProvider provider) {
     final position = provider.currentPosition;
     final duration = provider.totalDuration;
-    
+
     return Column(
       children: [
         SliderTheme(
@@ -867,7 +933,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
             trackShape: const RoundedRectSliderTrackShape(),
           ),
           child: Slider(
-            value: position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds.toDouble()),
+            value: position.inMilliseconds.toDouble().clamp(
+              0.0,
+              duration.inMilliseconds.toDouble(),
+            ),
             min: 0,
             max: duration.inMilliseconds.toDouble().clamp(1.0, double.infinity),
             onChanged: (value) {
@@ -882,11 +951,19 @@ class _LyricsScreenState extends State<LyricsScreen> {
             children: [
               Text(
                 _formatDuration(position),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               Text(
                 _formatDuration(duration),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -894,41 +971,61 @@ class _LyricsScreenState extends State<LyricsScreen> {
       ],
     );
   }
-  
+
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
     final seconds = d.inSeconds % 60;
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildRightPanel(BuildContext context, MusicProvider provider, dynamic song) {
+  Widget _buildRightPanel(
+    BuildContext context,
+    MusicProvider provider,
+    dynamic song,
+  ) {
     if (song == null) return const SizedBox();
-    
+
     // Loading State
     if (_isLoading) {
-      return Center(child: CircularProgressIndicator(color: Colors.white.withValues(alpha: 0.5)));
+      return Center(
+        child: CircularProgressIndicator(
+          color: Colors.white.withValues(alpha: 0.5),
+        ),
+      );
     }
-    
+
     // No Lyrics or Error
     if (_error != null || _lyrics == null || !_lyrics!.hasAnyLyrics) {
       return Center(
         child: Text(
           _error ?? 'Lyrics not available',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 24, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       );
     }
-    
+
     // Instrumental
     if (_lyrics!.instrumental) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.piano, size: 64, color: Colors.white.withValues(alpha: 0.5)),
+          Icon(
+            Icons.piano,
+            size: 64,
+            color: Colors.white.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 24),
           Text(
             'Instrumental',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 32, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       );
@@ -937,7 +1034,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
     // Synced Lyrics List with Word-by-Word Highlighting and Echo-Music depth effects
     if (_lyrics!.hasSyncedLyrics) {
       final lines = _lyrics!.parsedSyncedLyrics;
-      
+
       return ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(
@@ -971,7 +1068,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
             return false;
           },
           child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
             child: ListView.builder(
               controller: _scrollController,
               itemCount: lines.length,
@@ -982,10 +1081,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 final isCurrent = index == _currentLineIndex;
                 final isPast = index < _currentLineIndex;
                 final distance = (index - _currentLineIndex).abs();
-                
+
                 // Create/retrieve GlobalKey for this line
                 _lineKeys.putIfAbsent(index, () => GlobalKey());
-                
+
                 // Calculate opacity based on distance from current line (Echo-Music style)
                 double opacity;
                 if (isCurrent) {
@@ -997,7 +1096,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 } else {
                   opacity = 0.2;
                 }
-                
+
                 // Calculate scale based on distance (depth effect)
                 double scale;
                 if (isCurrent) {
@@ -1007,13 +1106,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 } else {
                   scale = 0.95;
                 }
-                
+
                 // Get next line timestamp for word timing calculation
-                final nextLineTimestamp = index + 1 < lines.length 
-                    ? lines[index + 1].timestamp 
+                final nextLineTimestamp = index + 1 < lines.length
+                    ? lines[index + 1].timestamp
                     : null;
                 final words = line.parseWords(nextLineTimestamp);
-                
+
                 return RepaintBoundary(
                   child: GestureDetector(
                     key: _lineKeys[index],
@@ -1026,7 +1125,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
                       child: Opacity(
                         opacity: opacity,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 10,
+                          ),
                           child: Wrap(
                             alignment: WrapAlignment.center,
                             children: words.map((word) {
@@ -1049,7 +1151,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         ),
       );
     }
-    
+
     // Plain Lyrics
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 24),
@@ -1079,14 +1181,14 @@ class _LyricsScreenState extends State<LyricsScreen> {
     final isWordPast = word.isPast(position);
     final isWordActive = word.isActive(position);
     final progress = word.getProgress(position);
-    
+
     // Colors
     final highlightedColor = Colors.white;
     final dimmedColor = Colors.white.withValues(alpha: 0.4);
-    
+
     // Font size based on line state
     final fontSize = isCurrent ? 34.0 : 30.0;
-    
+
     Color textColor;
     if (isPastLine || isWordPast) {
       // Past lines/words are fully highlighted
@@ -1098,7 +1200,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
       // Future words are dimmed
       textColor = dimmedColor;
     }
-    
+
     // Build the word with a space after it
     if (isWordActive && isCurrent) {
       // For the currently active word, show a sweeping highlight effect
@@ -1136,7 +1238,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         ),
       );
     }
-    
+
     // Regular word (past or future)
     return Padding(
       padding: const EdgeInsets.only(right: 8),

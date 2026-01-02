@@ -11,6 +11,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:audio_session/audio_session.dart' as as_lib;
 import '../models/song.dart';
 import '../services/audio_handler.dart';
+import '../services/discord_rpc_service.dart';
 import '../services/friends_service.dart';
 import '../services/analytics_service.dart';
 import '../services/playback_state_service.dart';
@@ -535,6 +536,8 @@ class MusicProvider extends ChangeNotifier {
     _activityTimer = null;
     // Clear activity when paused/stopped
     _friendsService.clearActivity();
+    // Clear Discord Rich Presence
+    DiscordRpcService.instance.clearActivity();
   }
 
   // Send current activity to server
@@ -546,6 +549,18 @@ class MusicProvider extends ChangeNotifier {
     }
 
     debugPrint('📡 Sending activity: ${song.title} by ${song.artist}');
+
+    // Update Discord Rich Presence
+    DiscordRpcService.instance.updateNowPlaying(
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      albumArtUrl: song.artworkPath,
+      isPlaying: _isPlaying,
+      durationMs: _totalDuration.inMilliseconds,
+      positionMs: _currentPosition.inMilliseconds,
+    );
+
     try {
       // Determine context based on what's playing
       String? context;
@@ -1120,6 +1135,43 @@ class MusicProvider extends ChangeNotifier {
     }
     // Clear prefetch since order changed
     _clearPrefetch();
+    notifyListeners();
+  }
+
+  /// Reorder songs in the playlist (for queue drag-and-drop)
+  void reorderPlaylist(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _playlist.length) return;
+    if (newIndex < 0 || newIndex > _playlist.length) return;
+
+    // ReorderableListView passes newIndex after removal, so adjust
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+
+    // Get the song being moved
+    final song = _playlist.removeAt(oldIndex);
+    _playlist.insert(newIndex, song);
+
+    // Update current index to keep playing the same song
+    if (_currentIndex == oldIndex) {
+      // The currently playing song was moved
+      _currentIndex = newIndex;
+    } else if (oldIndex < _currentIndex && newIndex >= _currentIndex) {
+      // Song moved from before current to after current
+      _currentIndex -= 1;
+    } else if (oldIndex > _currentIndex && newIndex <= _currentIndex) {
+      // Song moved from after current to before current
+      _currentIndex += 1;
+    }
+
+    // Clear prefetch since order changed
+    _clearPrefetch();
+
+    // Regenerate shuffle indices if shuffled
+    if (_isShuffled) {
+      _generateShuffleIndices();
+    }
+
     notifyListeners();
   }
 

@@ -4,17 +4,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Callback for download progress (0.0 to 1.0)
 typedef OnDownloadProgress = void Function(double progress);
 
 /// Status of an extension
-enum ExtensionStatus {
-  notInstalled,
-  downloading,
-  installed,
-  error,
-}
+enum ExtensionStatus { notInstalled, downloading, installed, error }
 
 /// Definition of an available extension
 class ExtensionInfo {
@@ -41,10 +37,7 @@ class ExtensionInfo {
   });
 }
 
-enum IconType {
-  generic,
-  ai,
-}
+enum IconType { generic, ai }
 
 /// Manages downloadable extensions for the app
 class ExtensionManagerService {
@@ -59,17 +52,24 @@ class ExtensionManagerService {
 
   /// Smart Match now uses backend AI API
   /// Premium+ subscription required
-  
+  static const String _enabledKeyPrefix = 'extension_enabled_';
+
   /// Available extensions
   static List<ExtensionInfo> get availableExtensions => [
     ExtensionInfo(
       id: 'smart-match',
       name: 'Smart Match (AI)',
       modelName: 'Cloud AI',
-      description: 'AI-powered song matching. Understands artist names across languages and distinguishes originals from covers. Requires Premium+ subscription.',
+      description:
+          'AI-powered song matching. Understands artist names across languages and distinguishes originals from covers. Requires Premium+ subscription.',
       version: '5.0.0',
       downloadUrl: '', // No download needed - uses backend API
-      capabilities: ['llm-reasoning', 'multilingual', 'artist-matching', 'cover-detection'],
+      capabilities: [
+        'llm-reasoning',
+        'multilingual',
+        'artist-matching',
+        'cover-detection',
+      ],
       iconType: IconType.ai,
       ramRequirement: '0 MB (Cloud)',
     ),
@@ -86,9 +86,12 @@ class ExtensionManagerService {
         await extDir.create(recursive: true);
       }
 
-      // Check which extensions are already installed
+      // Scan which extensions are already installed
       await _scanInstalledExtensions();
-      
+
+      // Load enabled states from SharedPreferences
+      await _loadEnabledStates();
+
       // Fetch sizes for available extensions in background
       _fetchExtensionSizes();
 
@@ -98,15 +101,35 @@ class ExtensionManagerService {
     }
   }
 
+  /// Load enabled states from SharedPreferences
+  Future<void> _loadEnabledStates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final ext in availableExtensions) {
+        final key = '$_enabledKeyPrefix${ext.id}';
+        if (prefs.containsKey(key)) {
+          _extensionEnabled[ext.id] = prefs.getBool(key) ?? true;
+        } else {
+          // Default to true for smart-match (cloud-based),
+          // but for others it might depend on if they are installed
+          _extensionEnabled[ext.id] = true;
+        }
+      }
+      debugPrint('⚙️ Extension states loaded: $_extensionEnabled');
+    } catch (e) {
+      debugPrint('⚠️ Failed to load extension states: $e');
+    }
+  }
+
   /// Fetch file sizes from remote URLs
   Future<void> _fetchExtensionSizes() async {
     for (final ext in availableExtensions) {
       if (ext.downloadUrl.isEmpty) continue;
-      
+
       try {
         final request = http.Request('HEAD', Uri.parse(ext.downloadUrl));
         final response = await http.Client().send(request);
-        
+
         final contentLength = response.contentLength;
         if (contentLength != null && contentLength > 0) {
           _extensionSizes[ext.id] = contentLength;
@@ -128,9 +151,13 @@ class ExtensionManagerService {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
   }
-  
+
   /// Download a file from URL directly to disk (streaming)
-  Future<void> _downloadToPath(String url, String path, void Function(double)? onProgress) async {
+  Future<void> _downloadToPath(
+    String url,
+    String path,
+    void Function(double)? onProgress,
+  ) async {
     final request = http.Request('GET', Uri.parse(url));
     final response = await http.Client().send(request);
 
@@ -148,7 +175,7 @@ class ExtensionManagerService {
       await response.stream.forEach((chunk) {
         sink.add(chunk);
         receivedBytes += chunk.length;
-        
+
         if (totalBytes > 0) {
           final progress = receivedBytes / totalBytes;
           onProgress?.call(progress);
@@ -198,6 +225,10 @@ class ExtensionManagerService {
 
   /// Check if a specific extension is installed
   bool isInstalled(String extensionId) {
+    final ext = getExtensionInfo(extensionId);
+    if (ext != null && ext.downloadUrl.isEmpty) {
+      return true; // Cloud-based extensions are always "installed"
+    }
     return _extensionStatus[extensionId] == ExtensionStatus.installed;
   }
 
@@ -207,29 +238,40 @@ class ExtensionManagerService {
   }
 
   /// Enable or disable an extension
-  void setEnabled(String extensionId, bool enabled) {
+  Future<void> setEnabled(String extensionId, bool enabled) async {
     _extensionEnabled[extensionId] = enabled;
-    debugPrint('${enabled ? "✅" : "⏸️"} $extensionId ${enabled ? "enabled" : "disabled"}');
+
+    // Persist the state
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('$_enabledKeyPrefix$extensionId', enabled);
+    } catch (e) {
+      debugPrint('⚠️ Failed to persist extension state: $e');
+    }
+
+    debugPrint(
+      '${enabled ? "✅" : "⏸️"} $extensionId ${enabled ? "enabled" : "disabled"}',
+    );
   }
 
   /// Convenience getters - only return true if installed AND enabled
   /// For smart-match, it's always "available" since it's backend-based
   /// The backend will check Premium+ subscription
-  bool get isSmartMatchAvailable => true; // Always try - backend checks subscription
-  
+  bool get isSmartMatchAvailable => _extensionEnabled['smart-match'] ?? true;
+
   /// Enable smart match (called after API key is configured) - deprecated
   void enableSmartMatch() {
     _extensionStatus['smart-match'] = ExtensionStatus.installed;
     _extensionEnabled['smart-match'] = true;
     debugPrint('✅ Smart Match enabled (Cloud AI)');
   }
-  
+
   /// Disable smart match - deprecated
   void disableSmartMatch() {
     _extensionEnabled['smart-match'] = false;
     debugPrint('⏸️ Smart Match disabled');
   }
-  
+
   /// Check if AI matching is available
   bool get isAudioFingerprintAvailable => isSmartMatchAvailable;
 
@@ -281,7 +323,7 @@ class ExtensionManagerService {
 
       // Download the model file
       debugPrint('⬇️ Downloading ${extension.name} model...');
-      
+
       // Save the model file
       String modelFilename;
       if (extensionId == 'smart-match') {
@@ -290,19 +332,15 @@ class ExtensionManagerService {
       } else {
         modelFilename = 'model.onnx';
       }
-      
+
       final modelFile = File('$_extensionsPath/$extensionId/$modelFilename');
-      
+
       // Download directly to file (stream) to save memory
-      await _downloadToPath(
-        extension.downloadUrl,
-        modelFile.path,
-        (progress) {
-          _downloadProgress[extensionId] = progress;
-          onProgress?.call(progress);
-        },
-      );
-      
+      await _downloadToPath(extension.downloadUrl, modelFile.path, (progress) {
+        _downloadProgress[extensionId] = progress;
+        onProgress?.call(progress);
+      });
+
       final fileSize = await modelFile.length();
       debugPrint('🧠 Saved model: $modelFilename (${_formatSize(fileSize)})');
 
@@ -325,7 +363,6 @@ class ExtensionManagerService {
 
       debugPrint('✅ Extension installed: ${extension.name}');
       return true;
-
     } catch (e) {
       debugPrint('⚠️ Failed to download extension: $e');
       _extensionStatus[extensionId] = ExtensionStatus.error;

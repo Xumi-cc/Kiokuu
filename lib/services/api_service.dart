@@ -272,16 +272,24 @@ class ApiService {
 
   // Auth
   Future<bool> login(String username, String password) async {
+    // Trim whitespace from credentials to handle copy-paste issues
+    final trimmedUsername = username.trim();
+    final trimmedPassword = password.trim();
+
     final response = await _postWithRetry(
       Uri.parse('$baseUrl/login'),
-      body: jsonEncode({'username': username, 'password': password}),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': trimmedUsername,
+        'password': trimmedPassword,
+      }),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       await _storage.write(key: 'auth_token', value: data['token']);
       await _storage.write(key: 'user_id', value: data['user_id']);
-      await _storage.write(key: 'username', value: username);
+      await _storage.write(key: 'username', value: trimmedUsername);
       return true;
     }
     return false;
@@ -795,9 +803,41 @@ class ApiService {
     );
 
     try {
-      // Step 1: Create TUS upload session
+      // Step 1: Get best upload server dynamically
+      String tusBaseUrl;
+      try {
+        debugPrint(
+          '🔑 Fetching upload server with token: ${token.substring(0, 20)}...',
+        );
+        debugPrint('   Endpoint: $baseUrl/upload/server');
+
+        final serverResponse = await http.get(
+          Uri.parse('$baseUrl/upload/server'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+
+        debugPrint('📡 Upload server response: ${serverResponse.statusCode}');
+
+        if (serverResponse.statusCode == 200) {
+          final serverData = jsonDecode(serverResponse.body);
+          tusBaseUrl = serverData['server'] ?? '$baseUrl/tus/';
+          debugPrint('🎯 Using upload server: $tusBaseUrl');
+          debugPrint('   Server ID: ${serverData['server_id']}');
+          debugPrint('   Load info: ${serverData['load_info']}');
+        } else {
+          debugPrint(
+            '⚠️ Failed to get upload server (${serverResponse.statusCode}): ${serverResponse.body}',
+          );
+          tusBaseUrl = '$baseUrl/tus/';
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to fetch upload server: $e, using default');
+        tusBaseUrl = '$baseUrl/tus/';
+      }
+
+      // Step 2: Create TUS upload session
       final createResponse = await http.post(
-        Uri.parse('$baseUrl/tus/'),
+        Uri.parse(tusBaseUrl),
         headers: {
           'Authorization': 'Bearer $token',
           'Tus-Resumable': '1.0.0',
@@ -1389,6 +1429,68 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Error creating checkout session: $e');
+    }
+    return null;
+  }
+
+  // ======================= USAGE ANALYTICS =======================
+
+  /// Get comprehensive usage statistics
+  Future<Map<String, dynamic>?> getUsageStats() async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/analytics/usage'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error getting usage stats: $e');
+    }
+    return null;
+  }
+
+  /// Get listening activity chart data
+  /// [period] can be 'week', 'month', or 'year'
+  Future<Map<String, dynamic>?> getListeningActivityChart({
+    String period = 'month',
+  }) async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/analytics/activity-chart?period=$period'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error getting activity chart: $e');
+    }
+    return null;
+  }
+
+  /// Get storage breakdown by category
+  Future<Map<String, dynamic>?> getStorageBreakdown() async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/analytics/storage-breakdown'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error getting storage breakdown: $e');
     }
     return null;
   }

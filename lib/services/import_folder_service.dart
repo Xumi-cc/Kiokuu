@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service to manage the "KioKuu" import folder that appears in system file managers.
 /// This folder is mounted/created automatically on app startup.
@@ -13,6 +14,7 @@ class ImportFolderService {
   ImportFolderService._();
 
   String? _importFolderPath;
+  static const String _customFolderKey = 'custom_import_folder_path';
 
   /// Get the import folder path
   String? get importFolderPath => _importFolderPath;
@@ -23,6 +25,24 @@ class ImportFolderService {
     if (kIsWeb) return; // Not supported on web
 
     try {
+      // Check if user has set a custom folder
+      final prefs = await SharedPreferences.getInstance();
+      final customPath = prefs.getString(_customFolderKey);
+
+      if (customPath != null && customPath.isNotEmpty) {
+        // Use custom folder if it exists
+        final customDir = Directory(customPath);
+        if (await customDir.exists()) {
+          _importFolderPath = customPath;
+          debugPrint('📁 Using custom import folder: $customPath');
+          return;
+        } else {
+          // Custom folder no longer exists, clear it
+          await prefs.remove(_customFolderKey);
+          debugPrint('⚠️ Custom folder no longer exists, reverting to default');
+        }
+      }
+
       // On Android, just check if we have permission (don't request here)
       if (Platform.isAndroid) {
         final hasPermission = await _hasStoragePermission();
@@ -33,7 +53,7 @@ class ImportFolderService {
         }
       }
 
-      // Create the import folder
+      // Create the default import folder
       _importFolderPath = await _createImportFolder();
 
       if (_importFolderPath != null) {
@@ -44,6 +64,50 @@ class ImportFolderService {
     } catch (e) {
       debugPrint('⚠️ Failed to initialize import folder: $e');
     }
+  }
+
+  /// Set a custom import folder path
+  Future<bool> setCustomImportFolder(String folderPath) async {
+    try {
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) {
+        debugPrint('⚠️ Folder does not exist: $folderPath');
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_customFolderKey, folderPath);
+      _importFolderPath = folderPath;
+
+      // Add to system bookmarks
+      await _addToSystemBookmarks(folderPath);
+      debugPrint('✅ Custom import folder set: $folderPath');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Failed to set custom folder: $e');
+      return false;
+    }
+  }
+
+  /// Clear custom import folder and revert to default
+  Future<void> clearCustomImportFolder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_customFolderKey);
+
+      // Reinitialize with default folder
+      await initialize();
+      debugPrint('✅ Reverted to default import folder');
+    } catch (e) {
+      debugPrint('⚠️ Failed to clear custom folder: $e');
+    }
+  }
+
+  /// Check if user has set a custom folder
+  Future<bool> hasCustomFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final customPath = prefs.getString(_customFolderKey);
+    return customPath != null && customPath.isNotEmpty;
   }
 
   /// Check if storage permission is already granted (no request)

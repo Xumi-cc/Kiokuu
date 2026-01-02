@@ -14,6 +14,7 @@ import 'screens/shared_playlist_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/api_service.dart';
+import 'services/discord_rpc_service.dart';
 import 'services/import_folder_service.dart';
 import 'services/extension_manager_service.dart';
 import 'utils/snackbar_utils.dart';
@@ -53,6 +54,7 @@ void main() async {
     const windowOptions = WindowOptions(
       size: Size(1280, 720),
       minimumSize: Size(800, 600),
+      maximumSize: Size(1280, 720), // Prevent resizing larger than default
       center: true,
       backgroundColor: Colors.black,
       skipTaskbar: false,
@@ -71,6 +73,9 @@ void main() async {
 
   // Initialize extension manager (checks for installed AI extensions)
   await ExtensionManagerService.instance.initialize();
+
+  // Initialize Discord Rich Presence (restores enabled state from preferences)
+  await DiscordRpcService.instance.initialize();
 
   // Create player first
   final player = Player();

@@ -60,7 +60,6 @@ class ImportTask {
 /// Callback types for import progress updates
 typedef OnImportProgress = void Function(List<ImportTask> tasks);
 typedef OnImportComplete = void Function(ImportTask task, bool success);
-typedef OnAIRequired = void Function(List<ImportTask> pendingTasks);
 typedef OnReviewNeeded = void Function(ImportTask task);
 
 /// Service that processes imported audio files.
@@ -76,7 +75,6 @@ class ImportProcessorService {
   bool _isProcessing = false;
   OnImportProgress? _onProgress;
   OnImportComplete? _onComplete;
-  OnAIRequired? _onAIRequired;
   OnReviewNeeded? _onReviewNeeded;
 
   /// Get current import tasks
@@ -94,17 +92,21 @@ class ImportProcessorService {
   void setCallbacks({
     OnImportProgress? onProgress,
     OnImportComplete? onComplete,
-    OnAIRequired? onAIRequired,
     OnReviewNeeded? onReviewNeeded,
   }) {
     _onProgress = onProgress;
     _onComplete = onComplete;
-    _onAIRequired = onAIRequired;
     _onReviewNeeded = onReviewNeeded;
   }
 
   /// Queue files for import processing
   Future<void> queueFiles(List<File> files) async {
+    // Check if AI extension is enabled
+    if (!isAIAvailable) {
+      debugPrint('🚫 Smart Match disabled - ignoring ${files.length} files');
+      return;
+    }
+
     final persistence = ImportTaskPersistence.instance;
 
     for (final file in files) {
@@ -127,20 +129,6 @@ class ImportProcessorService {
     }
 
     _onProgress?.call(_tasks);
-
-    // Check if AI extension is installed
-    if (!isAIAvailable) {
-      // Mark all pending tasks as waiting for AI
-      for (final task in _tasks) {
-        if (task.status == ImportStatus.pending) {
-          task.status = ImportStatus.waitingForAI;
-        }
-      }
-      _onProgress?.call(_tasks);
-      _onAIRequired?.call(pendingTasks);
-      debugPrint('⏳ Files queued but waiting for AI extension');
-      return;
-    }
 
     // Start processing if not already
     if (!_isProcessing) {

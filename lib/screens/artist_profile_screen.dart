@@ -15,6 +15,7 @@ class ArtistProfileScreen extends StatefulWidget {
   final String artistName;
   final String? artistImage;
   final int? initialFollowers;
+  final VoidCallback? onBackPressed; // Callback for embedded desktop navigation
 
   const ArtistProfileScreen({
     super.key,
@@ -23,6 +24,7 @@ class ArtistProfileScreen extends StatefulWidget {
         '', // Optional if coming from somewhere without ID, but needed for API
     this.artistImage,
     this.initialFollowers,
+    this.onBackPressed,
   });
 
   @override
@@ -257,7 +259,13 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
             scrolledUnderElevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                if (widget.onBackPressed != null) {
+                  widget.onBackPressed!();
+                } else {
+                  Navigator.of(context).pop();
+                }
+              },
             ),
             actions: [
               IconButton(
@@ -747,7 +755,13 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
                     backgroundColor: Colors.black54,
                     child: IconButton(
                       icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () {
+                        if (widget.onBackPressed != null) {
+                          widget.onBackPressed!();
+                        } else {
+                          Navigator.of(context).pop();
+                        }
+                      },
                     ),
                   ),
                 ),

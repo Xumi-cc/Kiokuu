@@ -5,7 +5,6 @@ import 'package:animations/animations.dart';
 import 'package:audio_session/audio_session.dart' as as_lib;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../providers/music_provider.dart';
-import '../services/api_service.dart';
 import 'add_to_playlist_sheet.dart';
 
 class NowPlayingCard extends StatefulWidget {
@@ -43,8 +42,11 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
             final availableHeight = constraints.maxHeight;
             final availableWidth = constraints.maxWidth;
 
-            // Calculate ideal artwork size based on width
-            final idealArtworkSize = (availableWidth * 0.7).clamp(200.0, 320.0);
+            // Calculate ideal artwork size based on width - larger for ViMusic-style design
+            final idealArtworkSize = (availableWidth * 0.85).clamp(
+              200.0,
+              380.0,
+            );
 
             // Estimate total height needed for all elements
             final estimatedHeight =
@@ -100,7 +102,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                       child: song?.artworkPath != null
                           ? (song!.artworkPath!.startsWith('http')
                                 ? Image.network(
-                                    song!.artworkPath!,
+                                    song.artworkPath!,
                                     fit: BoxFit.cover,
                                     gaplessPlayback: true,
                                     cacheWidth: 600,
@@ -110,7 +112,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                                         ),
                                   )
                                 : Image.file(
-                                    File(song!.artworkPath!),
+                                    File(song.artworkPath!),
                                     fit: BoxFit.cover,
                                     gaplessPlayback: true,
                                     cacheWidth: 600,
@@ -124,7 +126,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
 
             if (useHero) {
               artworkWidget = Hero(
-                tag: 'player_artwork',
+                tag: 'player_artwork_${song?.id ?? 'empty'}',
                 createRectTween: (begin, end) {
                   return MaterialRectArcTween(begin: begin, end: end);
                 },
@@ -155,7 +157,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                             child: song?.artworkPath != null
                                 ? (song!.artworkPath!.startsWith('http')
                                       ? Image.network(
-                                          song!.artworkPath!,
+                                          song.artworkPath!,
                                           fit: BoxFit.cover,
                                           errorBuilder: (_, __, ___) =>
                                               _buildDefaultArtwork(
@@ -163,7 +165,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                                               ),
                                         )
                                       : Image.file(
-                                          File(song!.artworkPath!),
+                                          File(song.artworkPath!),
                                           fit: BoxFit.cover,
                                         ))
                                 : _buildDefaultArtwork(provider.isPlaying),
@@ -207,7 +209,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Hero(
-                                tag: 'player_title',
+                                tag: 'player_title_${song?.id ?? 'empty'}',
                                 flightShuttleBuilder:
                                     (
                                       flightContext,
@@ -259,7 +261,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                               ),
                               const SizedBox(height: 8),
                               Hero(
-                                tag: 'player_artist',
+                                tag: 'player_artist_${song?.id ?? 'empty'}',
                                 flightShuttleBuilder:
                                     (
                                       flightContext,
@@ -345,89 +347,53 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                 _buildProgressBar(provider),
                 SizedBox(height: 10 * spacingScale),
                 _buildControlButtons(provider),
-                SizedBox(height: 20 * spacingScale),
+                SizedBox(height: 16 * spacingScale),
+                // Bottom row: Device indicator only (cleaner ViMusic-inspired design)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Device indicator (like Spotify)
                       GestureDetector(
                         onTap: () {
                           // TODO: Show device picker
                         },
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _getDeviceIcon(provider.deviceType),
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              provider.deviceName,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _getDeviceIcon(provider.deviceType),
+                                color: Colors.white.withOpacity(0.8),
+                                size: 14,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 6),
+                              Text(
+                                provider.deviceName,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.share_rounded),
-                            color: Colors.white,
-                            onPressed: () {},
-                            iconSize: 20,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.queue_music_rounded),
-                            color: Colors.white,
-                            onPressed: () {},
-                            iconSize: 20,
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ),
               ],
             );
-
-            if (!useHero) {
-              return TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeOutCubic,
-                builder: (context, value, child) {
-                  return Transform.translate(
-                    offset: Offset(0, -50 * (1 - value)), // Slide down from top
-                    child: child,
-                  );
-                },
-                child: GestureDetector(
-                  onHorizontalDragEnd: (details) {
-                    if (details.primaryVelocity == null) return;
-                    const sensitivity = 300;
-                    if (details.primaryVelocity! > sensitivity) {
-                      provider.playPrevious();
-                    } else if (details.primaryVelocity! < -sensitivity) {
-                      provider.playNext();
-                    }
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: content,
-                  ),
-                ),
-              );
-            }
 
             return GestureDetector(
               onHorizontalDragEnd: (details) {

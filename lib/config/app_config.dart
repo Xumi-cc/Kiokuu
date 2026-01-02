@@ -86,4 +86,17 @@ class AppConfig {
 
   /// Enable debug logging
   static const bool enableDebugLogs = true;
+
+  // ============================================================
+  // Social / Support Links
+  // ============================================================
+
+  /// Discord invite URL
+  static const String discordInviteUrl = 'https://discord.gg/geHykXBUcz';
+
+  /// Support email
+  static const String supportEmail = 'support@kiokuu.app';
+
+  /// Website URL
+  static const String websiteUrl = 'https://kiokuu.app';
 }

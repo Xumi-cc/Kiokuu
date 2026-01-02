@@ -67,6 +67,9 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   shared_preferences: ^2.2.2
   
+  # Charts for usage analytics
+  fl_chart: ^0.69.2
+  
   # Google Sign-In (for Android, iOS, Web)
   google_sign_in: ^6.2.1
   
@@ -83,6 +86,9 @@ dependencies:
   # Deep linking (universal links, app links, custom URL schemes)
   app_links: ^6.3.2
   flutter_svg: ^2.2.3
+  
+  # Discord Rich Presence (desktop only) - Pure Dart, no native code
+  dart_discord_presence: ^1.1.0
   
   # App version info (for update system)
   package_info_plus: ^8.0.0

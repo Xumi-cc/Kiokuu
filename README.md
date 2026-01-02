@@ -209,8 +209,8 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ## Contact
 
-- **Website**: [kiokuu.app](https://kiokuu.app)
-- **Email**: support@kiokuu.app
+- **Website**: [kiokuu.com](https://kiokuu.app)
+- **Email**: support@kiokuu.com
 - **Discord**: [Join our community](https://discord.gg/geHykXBUcz)
 
 ---
