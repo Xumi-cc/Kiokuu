@@ -11,6 +11,13 @@ class Playlist {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final List<PlaylistSong>? songs; // Full songs when fetching single playlist
+  // Album playlist fields
+  final String? albumId; // If set, this is an album playlist
+  final String? artistName; // Primary artist for album playlists
+  final String? releaseDate; // Album release date
+
+  /// Returns true if this playlist is an album
+  bool get isAlbum => albumId != null && albumId!.isNotEmpty;
 
   Playlist({
     required this.id,
@@ -24,6 +31,9 @@ class Playlist {
     required this.createdAt,
     this.updatedAt,
     this.songs,
+    this.albumId,
+    this.artistName,
+    this.releaseDate,
   });
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
@@ -62,6 +72,9 @@ class Playlist {
           ? DateTime.parse(json['updated_at'])
           : null,
       songs: songs,
+      albumId: json['album_id'],
+      artistName: json['artist_name'],
+      releaseDate: json['release_date'],
     );
   }
 

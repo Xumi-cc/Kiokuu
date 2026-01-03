@@ -76,6 +76,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
     String title,
     String artist, {
     int? durationSeconds,
+    String? songId,
   }) async {
     setState(() {
       _isLoading = true;
@@ -88,6 +89,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         trackName: title,
         artistName: artist,
         durationSeconds: durationSeconds,
+        songId: songId,
       );
 
       if (mounted) {
@@ -187,6 +189,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                 currentSong.title,
                 currentSong.artist,
                 durationSeconds: provider.totalDuration.inSeconds,
+                songId: currentSong.id,
               );
             });
           }

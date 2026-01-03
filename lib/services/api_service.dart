@@ -368,6 +368,26 @@ class ApiService {
     return null;
   }
 
+  /// Fetches lyrics for a song from the backend (which uses Syrics API)
+  Future<Map<String, dynamic>?> getLyrics(String songId) async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/songs/$songId/lyrics'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error getting lyrics from backend: $e');
+    }
+    return null;
+  }
+
   /// Returns a playlist-like map with: id, name, description, song_count, cover_images, songs
   Future<Map<String, dynamic>?> getLikedSongs() async {
     try {
@@ -681,6 +701,205 @@ class ApiService {
       return [];
     } catch (e) {
       return [];
+    }
+  }
+
+  /// Search user's own uploaded songs
+  /// Returns songs matching the query with pagination
+  Future<Map<String, dynamic>> searchUserSongs(
+    String query, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse(
+          '$baseUrl/user/songs/search?q=${Uri.encodeComponent(query)}&limit=$limit&offset=$offset',
+        ),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'songs': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'songs': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error searching user songs: $e');
+      return {'songs': [], 'total': 0};
+    }
+  }
+
+  /// Get all songs uploaded by the user with pagination
+  Future<Map<String, dynamic>> getUserSongs({
+    int limit = 50,
+    int offset = 0,
+    String? sortBy,
+    bool ascending = false,
+  }) async {
+    try {
+      final token = await _token;
+      var url = '$baseUrl/user/songs?limit=$limit&offset=$offset';
+      if (sortBy != null) {
+        url += '&sort=$sortBy&order=${ascending ? 'asc' : 'desc'}';
+      }
+      final response = await _getWithRetry(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'songs': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'songs': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error getting user songs: $e');
+      return {'songs': [], 'total': 0};
+    }
+  }
+
+  /// Get artists from user's library with pagination
+  Future<Map<String, dynamic>> getUserArtists({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final token = await _token;
+      final url = '$baseUrl/user/artists?limit=$limit&offset=$offset';
+      final response = await _getWithRetry(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'artists': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'artists': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error getting user artists: $e');
+      return {'artists': [], 'total': 0};
+    }
+  }
+
+  /// Get albums from user's library with pagination
+  Future<Map<String, dynamic>> getUserAlbums({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final token = await _token;
+      final url = '$baseUrl/user/albums?limit=$limit&offset=$offset';
+      final response = await _getWithRetry(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'albums': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'albums': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error getting user albums: $e');
+      return {'albums': [], 'total': 0};
+    }
+  }
+
+  /// Search artists in user's library with pagination (DB-level search)
+  Future<Map<String, dynamic>> searchUserArtists(
+    String query, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final token = await _token;
+      final encodedQuery = Uri.encodeComponent(query);
+      final url =
+          '$baseUrl/user/artists/search?q=$encodedQuery&limit=$limit&offset=$offset';
+      final response = await _getWithRetry(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'artists': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'artists': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error searching user artists: $e');
+      return {'artists': [], 'total': 0};
+    }
+  }
+
+  /// Search albums in user's library with pagination (DB-level search)
+  Future<Map<String, dynamic>> searchUserAlbums(
+    String query, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final token = await _token;
+      final encodedQuery = Uri.encodeComponent(query);
+      final url =
+          '$baseUrl/user/albums/search?q=$encodedQuery&limit=$limit&offset=$offset';
+      final response = await _getWithRetry(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return {'albums': [], 'total': 0};
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'albums': [], 'total': 0};
+    } catch (e) {
+      debugPrint('Error searching user albums: $e');
+      return {'albums': [], 'total': 0};
+    }
+  }
+
+  /// Get songs in an album with ownership info
+  Future<Map<String, dynamic>?> getAlbumSongs(String albumId) async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/user/albums/$albumId/songs'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return null;
+      }
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching album songs: $e');
+      return null;
     }
   }
 

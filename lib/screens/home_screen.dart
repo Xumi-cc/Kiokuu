@@ -31,6 +31,7 @@ import 'friends_screen.dart';
 import 'playlist_screen.dart';
 import 'settings_screen.dart';
 import 'artist_profile_screen.dart';
+import 'explore_screen.dart';
 import '../utils/snackbar_utils.dart';
 
 // Helper function to create responsive transition for player screen
@@ -1068,26 +1069,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchContent() {
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 64, color: Colors.grey[600]),
-            const SizedBox(height: 16),
-            Text(
-              'Search',
-              style: TextStyle(color: Colors.grey[400], fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Coming soon...',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
-          ],
-        ),
-      ),
+    return ExploreScreen(
+      isEmbedded: true,
+      onAlbumSelected: (playlistId) {
+        setState(() {
+          _selectedPlaylistId = playlistId;
+        });
+      },
+      onArtistSelected: (artistId, artistName, artistImage) {
+        setState(() {
+          _selectedArtistId = artistId;
+          _selectedArtistName = artistName;
+          _selectedArtistImage = artistImage;
+        });
+      },
     );
   }
 
@@ -3400,6 +3395,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: PlaylistDetailScreen(
               playlistId: _selectedPlaylistId!,
               isEmbedded: true,
+              onBackPressed: () {
+                setState(() {
+                  _selectedPlaylistId = null;
+                });
+              },
             ),
           ),
         ),

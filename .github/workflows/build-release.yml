@@ -238,7 +238,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release
+        run: flutter build windows --release --enable-impeller
 
       - name: Create MSIX Package
         run: |
@@ -339,7 +339,7 @@ jobs:
           cat > linux/packaging/deb/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.DEB_PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.app>
+          maintainer: Kiokuu Team <support@kiokuu.com>
           description: A beautiful music streaming and management application
           long_description: |
             Kiokuu is a feature-rich music application that allows you to 
@@ -370,7 +370,7 @@ jobs:
           cat > linux/packaging/rpm/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.app>
+          maintainer: Kiokuu Team <support@kiokuu.com>
           description: A beautiful music streaming and management application
           license: Proprietary
           group: Applications/Multimedia
@@ -459,7 +459,7 @@ jobs:
           Priority: optional
           Architecture: amd64
           Installed-Size: ${INSTALLED_SIZE}
-          Maintainer: Kiokuu Team <support@kiokuu.app>
+          Maintainer: Kiokuu Team <support@kiokuu.com>
           Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
           Homepage: https://github.com/Xumi-cc/Kiokuu
           Description: A beautiful music streaming and management application
@@ -541,7 +541,7 @@ jobs:
           /usr/share/applications/%{name}.desktop
           
           %changelog
-          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.app> - ${VERSION}-1
+          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.com> - ${VERSION}-1
           - Initial release
           SPEC
           
@@ -886,3 +886,68 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # UPDATE VERSION.JSON (for in-app update system)
+  # ============================================================================
+  update-version-json:
+    name: Update version.json
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version.json
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+          
+          echo "📝 Updating version.json with version: $VERSION"
+          
+          # Read current version.json and update latest_version
+          # Keep minimum_version unchanged (manual control for forced updates)
+          if [ -f version.json ]; then
+            # Update only the latest_version field
+            jq --arg ver "$VERSION" '.latest_version = $ver | .release_notes = "See full changelog on GitHub"' version.json > version.json.tmp
+            mv version.json.tmp version.json
+          else
+            # Create new version.json if it doesn't exist
+            cat > version.json << EOF
+          {
+            "latest_version": "$VERSION",
+            "minimum_version": "$VERSION",
+            "release_notes": "See full changelog on GitHub.",
+            "force_update_message": "This update contains critical security fixes. Please update to continue using Kiokuu.",
+            "download_urls": {
+              "android": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-arm64-v8a.apk",
+              "ios": "https://github.com/Xumi-cc/Kiokuu/releases/latest",
+              "windows": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-windows-portable.zip",
+              "macos": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-macos.dmg",
+              "linux": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-x86_64.AppImage"
+            },
+            "changelog_url": "https://github.com/Xumi-cc/Kiokuu/releases/latest"
+          }
+          EOF
+          fi
+          
+          echo "📄 Updated version.json:"
+          cat version.json
+
+      - name: Commit and Push version.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          VERSION="${{ github.ref_name }}"
+          
+          git add version.json
+          git diff --staged --quiet || git commit -m "🔄 Update version.json to $VERSION [skip ci]"
+          git push origin main
+

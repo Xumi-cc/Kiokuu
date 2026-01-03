@@ -583,6 +583,7 @@ class RecentAlbum {
   final String artistName;
   final int playCount;
   final DateTime lastPlayedAt;
+  final String? playlistId; // Album's playlist ID for navigation
 
   RecentAlbum({
     required this.albumId,
@@ -592,6 +593,7 @@ class RecentAlbum {
     required this.artistName,
     required this.playCount,
     required this.lastPlayedAt,
+    this.playlistId,
   });
 
   factory RecentAlbum.fromJson(Map<String, dynamic> json) {
@@ -604,6 +606,7 @@ class RecentAlbum {
       playCount: json['play_count'] ?? 0,
       lastPlayedAt:
           DateTime.tryParse(json['last_played_at'] ?? '') ?? DateTime.now(),
+      playlistId: json['playlist_id'] as String?,
     );
   }
 }

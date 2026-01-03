@@ -151,6 +151,13 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
               context,
               message.substring('SUBSCRIPTION_REQUIRED:'.length),
             );
+          } else if (message.startsWith('INVALID_AUDIO:')) {
+            // Backend detected invalid audio (shouldn't happen if client validated)
+            setState(() {
+              _isUploading = false;
+              _pickedFile = null; // Clear the invalid file
+              _errorMessage = message.substring('INVALID_AUDIO:'.length);
+            });
           } else {
             setState(() {
               _isUploading = false;

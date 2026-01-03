@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../services/shader_warmup_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
@@ -24,6 +26,11 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
+  // Shader warmup state (Windows only)
+  bool _isWarmingUpShaders = false;
+  double _warmupProgress = 0.0;
+  String _warmupStatus = '';
+
   @override
   void initState() {
     super.initState();
@@ -42,8 +49,54 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Check Auth after animation
-    Timer(const Duration(seconds: 2), _checkPermissionsAndAuth);
+    // Start initialization sequence
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Wait for fade-in animation to complete
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // On Windows, perform shader warmup first
+    if (Platform.isWindows && !ShaderWarmupService.instance.isWarmedUp) {
+      if (mounted) {
+        setState(() {
+          _isWarmingUpShaders = true;
+          _warmupStatus = 'Preparing graphics engine...';
+        });
+      }
+
+      await ShaderWarmupService.instance.warmUp(
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _warmupProgress = progress;
+            });
+          }
+        },
+        onStatusChange: (status) {
+          if (mounted) {
+            setState(() {
+              _warmupStatus = status;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isWarmingUpShaders = false;
+        });
+      }
+
+      // Brief pause to show "Ready!"
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    // Proceed with permissions and auth check
+    if (mounted) {
+      _checkPermissionsAndAuth();
+    }
   }
 
   Future<void> _checkPermissionsAndAuth() async {
@@ -192,12 +245,46 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                'Your music, everywhere',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.6),
+              // Show shader warmup progress on Windows, otherwise show tagline
+              if (_isWarmingUpShaders) ...[
+                const SizedBox(height: 20),
+                // Progress bar container
+                Container(
+                  width: 200,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 200 * _warmupProgress,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                // Status text
+                Text(
+                  _warmupStatus,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ] else
+                Text(
+                  'Your music, everywhere',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
             ],
           ),
         ),

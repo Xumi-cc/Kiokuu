@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 /// Service for fetching lyrics from multiple providers (like Echo-Music approach)
-/// Providers: 1. LrcLib  2. KuGou (fallback for better coverage)
+/// Providers: 1. LrcLib  2. KuGou  3. Backend (Syrics/Spotify) fallback
 class LyricsService {
   static const String _lrcLibBaseUrl = 'https://lrclib.net/api';
   static const String _kuGouSearchUrl = 'https://krcs.kugou.com/search';
@@ -13,11 +14,13 @@ class LyricsService {
 
   /// Fetches lyrics for a song from multiple providers
   /// Returns a LyricsResult containing plain and synced lyrics
+  /// [songId] is optional - if provided, will try backend Syrics API as final fallback
   static Future<LyricsResult?> getLyrics({
     required String trackName,
     required String artistName,
     String? albumName,
     int? durationSeconds,
+    String? songId,
   }) async {
     // Check cache first
     final cacheKey = '${artistName.toLowerCase()}-${trackName.toLowerCase()}';
@@ -67,12 +70,63 @@ class LyricsService {
       }
     }
 
+    // If still no synced lyrics and we have a songId, try backend
+    if ((result == null || !result.hasSyncedLyrics) && songId != null) {
+      print('🔍 Trying Backend fallback...');
+      final backendResult = await _getLyricsFromBackend(songId);
+
+      if (backendResult != null) {
+        print('✓ Backend: found (synced: ${backendResult.hasSyncedLyrics})');
+        if (backendResult.hasSyncedLyrics) {
+          result = backendResult;
+        } else if (result == null) {
+          result = backendResult;
+        }
+      } else {
+        print('✗ Backend: not found');
+      }
+    }
+
     // Cache the result
     _cache[cacheKey] = result;
 
     print('📝 Final lyrics provider: ${result?.providerName ?? "none"}');
 
     return result;
+  }
+
+  /// Fetches lyrics from Backend API
+  static Future<LyricsResult?> _getLyricsFromBackend(String songId) async {
+    try {
+      final api = ApiService();
+      final data = await api.getLyrics(songId);
+
+      if (data == null) return null;
+
+      final syncedLyrics = data['syncedLyrics'] as String?;
+      final trackName = data['trackName'] as String? ?? '';
+      final artistName = data['artistName'] as String? ?? '';
+      final providerName = data['providerName'] as String? ?? 'Backend';
+
+      if (syncedLyrics == null || syncedLyrics.isEmpty) {
+        return null;
+      }
+
+      return LyricsResult(
+        id: 0,
+        trackName: trackName,
+        artistName: artistName,
+        albumName: null,
+        duration: null,
+        instrumental: false,
+        plainLyrics: null,
+        syncedLyrics: syncedLyrics,
+        providerName: providerName,
+      );
+    } catch (e) {
+      print('Error fetching lyrics from backend: $e');
+      return null;
+    }
   }
 
   /// Fetches lyrics from LrcLib API

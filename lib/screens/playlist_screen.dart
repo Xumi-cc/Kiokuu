@@ -1093,8 +1093,14 @@ class _PlaylistLibraryScreenState extends State<PlaylistLibraryScreen>
         style: TextStyle(color: Colors.grey[400], fontSize: 13),
       ),
       onTap: () {
-        // Could navigate to album detail screen if available
-        // For now, just a placeholder
+        if (album.playlistId != null && album.playlistId!.isNotEmpty) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  PlaylistDetailScreen(playlistId: album.playlistId!),
+            ),
+          );
+        }
       },
     );
   }
@@ -1551,11 +1557,13 @@ class _PlaylistLibraryScreenState extends State<PlaylistLibraryScreen>
 class PlaylistDetailScreen extends StatefulWidget {
   final String playlistId;
   final bool isEmbedded; // When true, skip Scaffold/AppBar (for master-detail)
+  final VoidCallback? onBackPressed; // Callback for embedded desktop navigation
 
   const PlaylistDetailScreen({
     super.key,
     required this.playlistId,
     this.isEmbedded = false,
+    this.onBackPressed,
   });
 
   @override
@@ -3326,7 +3334,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Created by ${_username.isNotEmpty ? _username : 'User'}',
+                      _playlist!.isAlbum && _playlist!.artistName != null
+                          ? _playlist!.artistName!
+                          : 'Created by ${_username.isNotEmpty ? _username : 'User'}',
                       style: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 14,
@@ -3335,7 +3345,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${_playlist!.createdAt.year} • ${_getTotalDuration(songs)}',
+                      '${_playlist!.isAlbum && _playlist!.releaseDate != null ? _playlist!.releaseDate!.split('-').first : _playlist!.createdAt.year} • ${_getTotalDuration(songs)}',
                       style: TextStyle(color: Colors.grey[500], fontSize: 13),
                     ),
 
@@ -3591,9 +3601,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top spacing (where nav row used to be)
-                const SizedBox(height: 48),
-
+                // Back button row (only show when onBackPressed is provided)
+                if (widget.onBackPressed != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: widget.onBackPressed,
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Back',
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  const SizedBox(height: 48), // Top spacing when no back button
                 // Main Header Content
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -3648,7 +3674,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            _playlist!.isPublic
+                            _playlist!.isAlbum
+                                ? 'Album'
+                                : _playlist!.isPublic
                                 ? 'Public Playlist'
                                 : 'Playlist',
                             style: const TextStyle(
@@ -3672,11 +3700,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                           ),
                           const SizedBox(height: 16),
 
-                          // Metadata Row: Artist • Year • Duration
+                          // Metadata Row: Artist/User • Year • Duration
                           Row(
                             children: [
                               Text(
-                                _username.isNotEmpty ? _username : 'User',
+                                _playlist!.isAlbum &&
+                                        _playlist!.artistName != null
+                                    ? _playlist!.artistName!
+                                    : _username.isNotEmpty
+                                    ? _username
+                                    : 'User',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500,
@@ -3693,7 +3726,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                '${_playlist!.createdAt.year}',
+                                _playlist!.isAlbum &&
+                                        _playlist!.releaseDate != null
+                                    ? _playlist!.releaseDate!
+                                          .split('-')
+                                          .first // Just the year
+                                    : '${_playlist!.createdAt.year}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 15,
