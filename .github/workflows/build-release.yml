@@ -238,7 +238,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release --enable-impeller
+        run: flutter build windows --release
 
       - name: Create MSIX Package
         run: |
