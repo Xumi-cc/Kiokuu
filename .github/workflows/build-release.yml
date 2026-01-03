@@ -263,6 +263,16 @@ jobs:
             Copy-Item $msixPath.FullName "release-artifacts/windows/${{ env.PACKAGE_NAME }}-$VERSION-windows.msix"
           }
           
+          # Create launcher script that enables Impeller for better performance
+          $launcherContent = @"
+          @echo off
+          REM Enable Impeller rendering engine for smoother animations
+          set FLUTTER_ENGINE_SWITCHES=1
+          set FLUTTER_ENGINE_SWITCH_1=enable-impeller=true
+          start "" "%~dp0${{ env.PACKAGE_NAME }}.exe"
+          "@
+          Set-Content -Path "build/windows/x64/runner/Release/${{ env.APP_NAME }}.bat" -Value $launcherContent
+          
           # Create ZIP of the release folder
           Compress-Archive -Path "build/windows/x64/runner/Release/*" `
             -DestinationPath "release-artifacts/windows/${{ env.PACKAGE_NAME }}-$VERSION-windows-portable.zip"
