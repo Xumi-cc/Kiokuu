@@ -912,8 +912,8 @@ class _PlaylistLibraryScreenState extends State<PlaylistLibraryScreen>
                         colors: playlist.name == 'Most Played'
                             ? [const Color(0xFFFF6B35), const Color(0xFFFFA07A)]
                             : [
-                                const Color(0xFF1DB954),
-                                const Color(0xFF1ED760),
+                                const Color(0xFF282828),
+                                const Color(0xFF121212),
                               ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -1175,8 +1175,8 @@ class _PlaylistLibraryScreenState extends State<PlaylistLibraryScreen>
                                     const Color(0xFFFFA07A),
                                   ]
                                 : [
-                                    const Color(0xFF1DB954),
-                                    const Color(0xFF1ED760),
+                                    const Color(0xFF282828),
+                                    const Color(0xFF121212),
                                   ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -3427,8 +3427,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               size: 24,
                             ),
                             color: _isLiked
-                                ? const Color(0xFF1DB954)
-                                : Colors.grey[400],
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.4),
                             splashRadius: 20,
                           ),
                         ],
@@ -3466,8 +3466,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                     size: 24,
                                   ),
                             color: _isPlaylistOffline
-                                ? const Color(0xFF1DB954)
-                                : Colors.grey[400],
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.35),
                             splashRadius: 20,
                             tooltip: _isDownloading
                                 ? 'Downloading $_downloadedCount/$_totalDownloads'
@@ -3824,8 +3824,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                     icon: Icon(
                                       Icons.shuffle,
                                       color: provider.isShuffled
-                                          ? const Color(0xFF1DB954)
-                                          : Colors.grey[400],
+                                          ? Colors.white
+                                          : Colors.white.withOpacity(0.4),
                                       size: 24,
                                     ),
                                     tooltip: 'Shuffle',
@@ -3842,8 +3842,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                       ? Icons.favorite
                                       : Icons.favorite_border,
                                   color: _isLiked
-                                      ? const Color(0xFF1DB954)
-                                      : Colors.grey[400],
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.4),
                                   size: 24,
                                 ),
                                 tooltip: _isLiked ? 'Unlike' : 'Like',
@@ -3874,8 +3874,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                             : Icons
                                                   .download_for_offline_outlined,
                                         color: _isPlaylistOffline
-                                            ? const Color(0xFF1DB954)
-                                            : Colors.grey[400],
+                                            ? Colors.white
+                                            : Colors.white.withOpacity(0.4),
                                         size: 24,
                                       ),
                                 tooltip: _isDownloading
@@ -3986,7 +3986,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                   ? _buildMiniEqualizer()
                                   : const Icon(
                                       Icons.pause,
-                                      color: Color(0xFF1DB954),
+                                      color: Colors.white,
                                       size: 16,
                                     ))
                             : isHovered
@@ -4014,8 +4014,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         song.title,
                         style: TextStyle(
                           color: isPlayingSong
-                              ? const Color(0xFF1DB954)
-                              : Colors.white,
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.7),
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
@@ -4325,7 +4325,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                   ? _buildMiniEqualizer()
                                   : const Icon(
                                       Icons.pause,
-                                      color: Color(0xFF1DB954),
+                                      color: Colors.white,
                                       size: 24,
                                     ),
                             ),
@@ -4343,8 +4343,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             song.title,
                             style: TextStyle(
                               color: isCurrentlySelected
-                                  ? const Color(0xFF1DB954)
-                                  : Colors.white,
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.7),
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
                             ),
@@ -4588,7 +4588,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                           ? _buildMiniEqualizer()
                           : const Icon(
                               Icons.pause,
-                              color: Color(0xFF1DB954),
+                              color: Colors.white,
                               size: 24,
                             ),
                     ),
@@ -4600,8 +4600,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             song.title,
             style: TextStyle(
               color: isCurrentlySelected
-                  ? const Color(0xFF1DB954)
-                  : Colors.white,
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.7),
               fontWeight: isCurrentlySelected
                   ? FontWeight.bold
                   : FontWeight.w500,
@@ -4613,8 +4613,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             song.artistName,
             style: TextStyle(
               color: isCurrentlySelected
-                  ? Colors.white.withOpacity(0.8)
-                  : Colors.grey[500],
+                  ? Colors.white.withValues(alpha: 0.8)
+                  : Colors.white.withValues(alpha: 0.4),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -4708,7 +4708,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   Widget _buildMiniEqualizer() {
-    return const _PlaylistMiniEqualizer(color: Color(0xFF1DB954), size: 16);
+    return const _PlaylistMiniEqualizer(color: Colors.white, size: 16);
   }
 }
 

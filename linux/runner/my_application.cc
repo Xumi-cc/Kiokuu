@@ -30,6 +30,14 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_title(window, "Music Cloud");
 
   gtk_window_set_default_size(window, 1280, 720);
+  
+  // Set window icon
+  g_autoptr(GError) error = nullptr;
+  if (!gtk_window_set_icon_from_file(window, "data/flutter_assets/assets/images/logo_black_bg_white.png", &error)) {
+    g_clear_error(&error);
+    // Try local path for development
+    gtk_window_set_icon_from_file(window, "assets/images/logo_black_bg_white.png", nullptr);
+  }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

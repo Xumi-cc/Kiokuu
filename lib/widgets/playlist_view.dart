@@ -216,8 +216,10 @@ class PlaylistView extends StatelessWidget {
                                     style: Theme.of(context).textTheme.bodyLarge
                                         ?.copyWith(
                                           color: isCurrent
-                                              ? const Color(0xFF1DB954)
-                                              : Colors.white,
+                                              ? Colors.white
+                                              : Colors.white.withValues(
+                                                  alpha: 0.6,
+                                                ),
                                           fontWeight: FontWeight.w600,
                                           fontSize: 14, // Reduced font size
                                         ),

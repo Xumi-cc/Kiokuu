@@ -359,7 +359,7 @@ jobs:
           priority: optional
           installed_size: 50000
           essential: false
-          icon: assets/images/app_icon.png
+          icon: assets/images/logo_black_bg_white.png
           postinstall_scripts:
             - echo "Kiokuu installed successfully"
           keywords:
@@ -384,7 +384,7 @@ jobs:
           description: A beautiful music streaming and management application
           license: Proprietary
           group: Applications/Multimedia
-          icon: assets/images/app_icon.png
+          icon: assets/images/logo_black_bg_white.png
           EOF
 
       - name: Create make_config for AppImage
@@ -393,7 +393,7 @@ jobs:
           cat > linux/packaging/appimage/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.PACKAGE_NAME }}
-          icon: assets/images/app_icon.png
+          icon: assets/images/logo_black_bg_white.png
           keywords:
             - Music
             - Audio
@@ -459,6 +459,10 @@ jobs:
           StartupNotify=true
           StartupWMClass=${{ env.PACKAGE_NAME }}
           DESKTOP
+          
+          # Copy icon
+          cp assets/images/logo_black_bg_white.png deb_root/usr/share/icons/hicolor/256x256/apps/${{ env.PACKAGE_NAME }}.png
+          cp assets/images/logo_black_bg_white.png deb_root/usr/share/pixmaps/${{ env.PACKAGE_NAME }}.png
           
           # Create control file
           INSTALLED_SIZE=$(du -sk deb_root | cut -f1)
@@ -545,10 +549,18 @@ jobs:
           StartupNotify=true
           DESKTOP
           
+          # Copy icon
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          mkdir -p %{buildroot}/usr/share/pixmaps
+          cp %{_builddir}/../../assets/images/logo_black_bg_white.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/%{name}.png
+          cp %{_builddir}/../../assets/images/logo_black_bg_white.png %{buildroot}/usr/share/pixmaps/%{name}.png
+          
           %files
           /usr/lib/%{name}
           /usr/bin/%{name}
           /usr/share/applications/%{name}.desktop
+          /usr/share/icons/hicolor/256x256/apps/%{name}.png
+          /usr/share/pixmaps/%{name}.png
           
           %changelog
           * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.com> - ${VERSION}-1
@@ -614,9 +626,9 @@ jobs:
           cp AppDir/${{ env.PACKAGE_NAME }}.desktop AppDir/usr/share/applications/
           
           # Create icon (placeholder - replace with actual icon)
-          if [ -f "assets/images/app_icon.png" ]; then
-            cp assets/images/app_icon.png AppDir/${{ env.PACKAGE_NAME }}.png
-            cp assets/images/app_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.PACKAGE_NAME }}.png
+          if [ -f "assets/images/logo_black_bg_white.png" ]; then
+            cp assets/images/logo_black_bg_white.png AppDir/${{ env.PACKAGE_NAME }}.png
+            cp assets/images/logo_black_bg_white.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.PACKAGE_NAME }}.png
           else
             # Create a placeholder icon
             convert -size 256x256 xc:#6366f1 AppDir/${{ env.PACKAGE_NAME }}.png 2>/dev/null || \
@@ -921,11 +933,25 @@ jobs:
           
           echo "📝 Updating version.json with version: $VERSION"
           
-          # Read current version.json and update latest_version
-          # Keep minimum_version unchanged (manual control for forced updates)
+          # Read current version.json and update
           if [ -f version.json ]; then
-            # Update only the latest_version field
-            jq --arg ver "$VERSION" '.latest_version = $ver | .release_notes = "See full changelog on GitHub"' version.json > version.json.tmp
+            # Update latest_version and replace {version} placeholders in download URLs
+            jq --arg ver "$VERSION" '
+              .latest_version = $ver |
+              .release_notes = "See full changelog on GitHub" |
+              .download_urls.android.arm64 = (.download_urls.android.arm64 | gsub("{version}"; $ver)) |
+              .download_urls.android.arm32 = (.download_urls.android.arm32 | gsub("{version}"; $ver)) |
+              .download_urls.android.x86_64 = (.download_urls.android.x86_64 | gsub("{version}"; $ver)) |
+              .download_urls.ios.ipa = (.download_urls.ios.ipa | gsub("{version}"; $ver)) |
+              .download_urls.windows.portable = (.download_urls.windows.portable | gsub("{version}"; $ver)) |
+              .download_urls.windows.msix = (.download_urls.windows.msix | gsub("{version}"; $ver)) |
+              .download_urls.macos.dmg = (.download_urls.macos.dmg | gsub("{version}"; $ver)) |
+              .download_urls.linux.appimage = (.download_urls.linux.appimage | gsub("{version}"; $ver)) |
+              .download_urls.linux.deb = (.download_urls.linux.deb | gsub("{version}"; $ver)) |
+              .download_urls.linux.rpm = (.download_urls.linux.rpm | gsub("{version}"; $ver)) |
+              .download_urls.linux.flatpak = (.download_urls.linux.flatpak | gsub("{version}"; $ver)) |
+              .download_urls.linux.tarball = (.download_urls.linux.tarball | gsub("{version}"; $ver))
+            ' version.json > version.json.tmp
             mv version.json.tmp version.json
           else
             # Create new version.json if it doesn't exist
@@ -936,11 +962,28 @@ jobs:
             "release_notes": "See full changelog on GitHub.",
             "force_update_message": "This update contains critical security fixes. Please update to continue using Kiokuu.",
             "download_urls": {
-              "android": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-arm64-v8a.apk",
-              "ios": "https://github.com/Xumi-cc/Kiokuu/releases/latest",
-              "windows": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-windows-portable.zip",
-              "macos": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-macos.dmg",
-              "linux": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-x86_64.AppImage"
+              "android": {
+                "arm64": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-arm64-v8a.apk",
+                "arm32": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-armeabi-v7a.apk",
+                "x86_64": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-x86_64.apk"
+              },
+              "ios": {
+                "ipa": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-ios.ipa"
+              },
+              "windows": {
+                "portable": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-windows-portable.zip",
+                "msix": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-windows.msix"
+              },
+              "macos": {
+                "dmg": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-macos.dmg"
+              },
+              "linux": {
+                "appimage": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-x86_64.AppImage",
+                "deb": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu_${VERSION}_amd64.deb",
+                "rpm": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-1.x86_64.rpm",
+                "flatpak": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION.flatpak",
+                "tarball": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-$VERSION-linux-x64.tar.gz"
+              }
             },
             "changelog_url": "https://github.com/Xumi-cc/Kiokuu/releases/latest"
           }

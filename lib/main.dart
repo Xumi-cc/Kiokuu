@@ -54,7 +54,7 @@ void main() async {
     const windowOptions = WindowOptions(
       size: Size(1280, 720),
       minimumSize: Size(800, 600),
-      maximumSize: Size(1280, 720), // Prevent resizing larger than default
+      maximumSize: Size(1280, 720),
       center: true,
       backgroundColor: Colors.black,
       skipTaskbar: false,

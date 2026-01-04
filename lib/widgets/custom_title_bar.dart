@@ -35,7 +35,6 @@ class CustomTitleBar extends StatefulWidget {
 }
 
 class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
-  bool _isMaximized = false;
   bool _isFocused = true;
 
   @override
@@ -52,24 +51,12 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
   }
 
   Future<void> _updateWindowState() async {
-    final isMaximized = await windowManager.isMaximized();
     final isFocused = await windowManager.isFocused();
     if (mounted) {
       setState(() {
-        _isMaximized = isMaximized;
         _isFocused = isFocused;
       });
     }
-  }
-
-  @override
-  void onWindowMaximize() {
-    setState(() => _isMaximized = true);
-  }
-
-  @override
-  void onWindowUnmaximize() {
-    setState(() => _isMaximized = false);
   }
 
   @override
@@ -94,13 +81,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onPanStart: (_) => windowManager.startDragging(),
-      onDoubleTap: () async {
-        if (await windowManager.isMaximized()) {
-          windowManager.unmaximize();
-        } else {
-          windowManager.maximize();
-        }
-      },
       child: Container(
         height: widget.height,
         decoration: BoxDecoration(
@@ -165,19 +145,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
           onPressed: () => windowManager.minimize(),
           hoverColor: Colors.white.withOpacity(0.1),
         ),
-        // Maximize/Restore button
-        _WindowButton(
-          icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
-          iconSize: _isMaximized ? 14 : 16,
-          onPressed: () async {
-            if (await windowManager.isMaximized()) {
-              windowManager.unmaximize();
-            } else {
-              windowManager.maximize();
-            }
-          },
-          hoverColor: Colors.white.withOpacity(0.1),
-        ),
         // Close button
         _WindowButton(
           icon: Icons.close,
@@ -195,14 +162,12 @@ class _WindowButton extends StatefulWidget {
   final VoidCallback onPressed;
   final Color hoverColor;
   final bool isClose;
-  final double iconSize;
 
   const _WindowButton({
     required this.icon,
     required this.onPressed,
     required this.hoverColor,
     this.isClose = false,
-    this.iconSize = 16,
   });
 
   @override
@@ -225,7 +190,7 @@ class _WindowButtonState extends State<_WindowButton> {
           color: _isHovered ? widget.hoverColor : Colors.transparent,
           child: Icon(
             widget.icon,
-            size: widget.iconSize,
+            size: 16,
             color: _isHovered && widget.isClose ? Colors.white : Colors.white70,
           ),
         ),

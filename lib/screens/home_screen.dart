@@ -1511,8 +1511,11 @@ class _HomeScreenState extends State<HomeScreen> {
               if (isLargeScreen) SizedBox(width: 280, child: _buildSidebar()),
 
               // Main Content - switches based on nav selection
+              // Priority: Playlist > Artist > Nav tabs (so album from artist can go back)
               Expanded(
-                child: _selectedArtistId != null && isLargeScreen
+                child: _selectedPlaylistId != null && isLargeScreen
+                    ? _buildPlaylistDetailContent()
+                    : _selectedArtistId != null && isLargeScreen
                     ? ArtistProfileScreen(
                         artistId: _selectedArtistId!,
                         artistName: _selectedArtistName ?? '',
@@ -1524,9 +1527,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             _selectedArtistImage = null;
                           });
                         },
+                        onAlbumSelected: (playlistId) {
+                          setState(() {
+                            // Keep artist selection so back returns here
+                            _selectedPlaylistId = playlistId;
+                          });
+                        },
                       )
-                    : _selectedPlaylistId != null && isLargeScreen
-                    ? _buildPlaylistDetailContent()
                     : _selectedNavIndex == 2
                     ? const PlaylistLibraryScreen(isEmbedded: true)
                     : _selectedNavIndex == 1
@@ -2047,6 +2054,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               subtitle: '$songCount songs',
                               coverImages: effectiveCovers,
                               playlistId: pl['id'] as String? ?? '',
+                              isSelected:
+                                  _selectedPlaylistId ==
+                                  (pl['id'] as String? ?? ''),
                               onTap: () {
                                 final playlistId = pl['id'] as String? ?? '';
                                 setState(() {
@@ -2086,6 +2096,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   subtitle: '$songCount songs',
                                   coverImages: effectiveCovers,
                                   playlistId: pl['id'] as String? ?? '',
+                                  isSelected:
+                                      _selectedPlaylistId ==
+                                      (pl['id'] as String? ?? ''),
                                   onTap: () {
                                     final playlistId =
                                         pl['id'] as String? ?? '';
@@ -2180,11 +2193,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ? album.imagePath
                                       : null,
                                   isCircular: false,
+                                  isSelected:
+                                      _selectedPlaylistId == album.playlistId,
                                   onTap: () {
-                                    // TODO: Navigate to album page
-                                    debugPrint(
-                                      'Tapped on album: ${album.name}',
-                                    );
+                                    if (album.playlistId != null &&
+                                        album.playlistId!.isNotEmpty) {
+                                      setState(() {
+                                        _selectedPlaylistId = album.playlistId;
+                                      });
+                                    }
                                   },
                                 ),
                               ),
@@ -2207,16 +2224,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ? album.imagePath
                                           : null,
                                       isCircular: false,
+                                      isSelected:
+                                          _selectedPlaylistId ==
+                                          album.playlistId,
                                       onTap: () {
-                                        debugPrint(
-                                          'Tapped on album: ${album.name}',
-                                        );
+                                        if (album.playlistId != null &&
+                                            album.playlistId!.isNotEmpty) {
+                                          setState(() {
+                                            _selectedPlaylistId =
+                                                album.playlistId;
+                                          });
+                                        }
                                       },
                                     ),
                                   ),
                                 )
                                 .toList(),
                           ),
+
                           crossFadeState: _showAllAlbums
                               ? CrossFadeState.showSecond
                               : CrossFadeState.showFirst,
@@ -2351,6 +2376,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   '${artist['follower_count'] ?? 0} followers',
                               imageUrl: fullImageUrl,
                               isCircular: true,
+                              isSelected:
+                                  _selectedArtistId == artist['artist_id'],
                               onTap: () {
                                 setState(() {
                                   _selectedArtistId = artist['artist_id'];
@@ -2417,21 +2444,25 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF282828) : Colors.transparent,
+          color: isSelected
+              ? Colors.white.withOpacity(0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.white : Colors.grey[500],
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.5),
               size: 24,
             ),
             const SizedBox(width: 16),
             Text(
               title,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[500],
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.5),
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 fontSize: 15,
               ),
@@ -2489,6 +2520,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String? imageUrl,
     bool isCircular = false,
     required VoidCallback onTap,
+    bool isSelected = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -2496,6 +2528,10 @@ class _HomeScreenState extends State<HomeScreen> {
       hoverColor: Colors.white.withOpacity(0.05),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? Colors.white.withOpacity(0.1) : null,
+        ),
         child: Row(
           children: [
             // Thumbnail (circular for artists, square for albums)
@@ -2538,9 +2574,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.6),
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                       fontSize: 14,
                     ),
                     maxLines: 1,
@@ -2549,7 +2589,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 12,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2569,10 +2612,12 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String>? coverImages,
     required VoidCallback onTap,
     String? playlistId,
+    bool isSelected = false,
   }) {
     final musicProvider = Provider.of<MusicProvider>(context);
     final isPlaying =
         playlistId != null && musicProvider.currentPlaylistId == playlistId;
+    final isHighlighted = isPlaying || isSelected;
 
     return InkWell(
       onTap: onTap,
@@ -2580,7 +2625,7 @@ class _HomeScreenState extends State<HomeScreen> {
       hoverColor: Colors.white.withOpacity(0.05),
       child: Container(
         decoration: BoxDecoration(
-          color: isPlaying
+          color: isHighlighted
               ? Colors.white.withOpacity(0.08)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -2634,8 +2679,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     title,
                     style: TextStyle(
-                      color: isPlaying ? const Color(0xFF1DB954) : Colors.white,
-                      fontWeight: FontWeight.w500,
+                      color: isHighlighted
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.6),
+                      fontWeight: isHighlighted
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                       fontSize: 14,
                     ),
                     maxLines: 1,
@@ -2644,7 +2693,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 12,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3242,8 +3294,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       name == 'Recently Played'
                                 ? const LinearGradient(
                                     colors: [
-                                      Color(0xFF1DB954),
-                                      Color(0xFF1ED760),
+                                      Color(0xFF282828),
+                                      Color(0xFF121212),
                                     ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
@@ -3321,9 +3373,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Center(
                           child: isPlaying
                               ? _buildSidebarEqualizer()
-                              : Icon(
+                              : const Icon(
                                   Icons.pause,
-                                  color: const Color(0xFF1DB954),
+                                  color: Colors.white,
                                   size: 14,
                                 ),
                         ),
@@ -3339,8 +3391,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         name,
                         style: TextStyle(
                           color: isCurrentPlaylist
-                              ? const Color(0xFF1DB954)
-                              : (isSelected ? Colors.white : Colors.grey[300]),
+                              ? Colors.white
+                              : (isSelected
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.6)),
                           fontSize: 13,
                           fontWeight: isCurrentPlaylist || isSelected
                               ? FontWeight.bold
@@ -3353,8 +3407,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         isCurrentPlaylist ? 'Now Playing' : '$songCount songs',
                         style: TextStyle(
                           color: isCurrentPlaylist
-                              ? const Color(0xFF1DB954).withOpacity(0.8)
-                              : Colors.grey[600],
+                              ? Colors.white.withValues(alpha: 0.8)
+                              : Colors.white.withValues(alpha: 0.45),
                           fontSize: 11,
                         ),
                       ),
@@ -3370,7 +3424,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSidebarEqualizer() {
-    return const _AnimatedEqualizer(color: Color(0xFF1DB954), size: 14);
+    return const _AnimatedEqualizer(color: Colors.white, size: 14);
   }
 
   /// Builds the playlist detail content for master-detail layout on large screens
@@ -4336,7 +4390,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               strokeWidth: 2,
                               backgroundColor: Colors.transparent,
                               valueColor: const AlwaysStoppedAnimation(
-                                Color(0xFF1DB954),
+                                Colors.white,
                               ),
                               strokeCap: StrokeCap.round,
                             ),
@@ -4373,7 +4427,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             if (isLive) ...[
                               const _AnimatedEqualizer(
-                                color: Color(0xFF1DB954),
+                                color: Colors.white,
                                 size: 10,
                               ),
                               const SizedBox(width: 4),

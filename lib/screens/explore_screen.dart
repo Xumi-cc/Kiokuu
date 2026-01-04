@@ -793,9 +793,11 @@ class _SongTileState extends State<_SongTile> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: isPlaying
-                                ? Colors.greenAccent
-                                : Colors.white,
-                            fontWeight: FontWeight.w500,
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.7),
+                            fontWeight: isPlaying
+                                ? FontWeight.bold
+                                : FontWeight.w500,
                             fontSize: 15,
                           ),
                         ),
@@ -803,8 +805,10 @@ class _SongTileState extends State<_SongTile> {
                           artist,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.grey,
+                          style: TextStyle(
+                            color: isPlaying
+                                ? Colors.white.withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.4),
                             fontSize: 13,
                           ),
                         ),

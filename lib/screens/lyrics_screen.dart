@@ -14,7 +14,6 @@ class LyricsScreen extends StatefulWidget {
 }
 
 class _LyricsScreenState extends State<LyricsScreen> {
-  bool _wasFullScreen = false;
   LyricsResult? _lyrics;
   bool _isLoading = true;
   String? _error;
@@ -38,8 +37,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // Ensure status bar is restored when leaving lyrics screen by any means
-    // (e.g., system back button, gesture navigation)
+    // Restore mobile UI when leaving lyrics screen
     if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
       SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.edgeToEdge,
@@ -51,21 +49,18 @@ class _LyricsScreenState extends State<LyricsScreen> {
 
   Future<void> _enterFullscreen() async {
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      _wasFullScreen = await windowManager.isFullScreen();
       await windowManager.setFullScreen(true);
     } else {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
   }
 
-  Future<void> _exitFullscreen() async {
+  Future<void> _exitLyrics() async {
+    // Exit fullscreen first for smooth transition
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      await windowManager.setFullScreen(_wasFullScreen);
-    } else {
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge,
-        overlays: SystemUiOverlay.values,
-      );
+      await windowManager.setFullScreen(false);
+      // Small delay to let window animation complete
+      await Future.delayed(const Duration(milliseconds: 100));
     }
     if (mounted) {
       Navigator.of(context).pop();
@@ -237,13 +232,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
-                              Icons.close_fullscreen,
+                              Icons.close,
                               size: 24,
                               color: Colors.white,
                             ),
                           ),
-                          onPressed: _exitFullscreen,
-                          tooltip: 'Exit Fullscreen',
+                          onPressed: _exitLyrics,
+                          tooltip: 'Close',
                         ),
                       );
                     }
@@ -318,7 +313,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
               children: [
                 // Back button
                 GestureDetector(
-                  onTap: _exitFullscreen,
+                  onTap: _exitLyrics,
                   child: Container(
                     width: 40,
                     height: 40,

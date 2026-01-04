@@ -41,15 +41,18 @@ class SongListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Determine colors based on disabled state
+    final isSelected = isCurrent && !isDisabled;
     final textColor = isDisabled
         ? Colors.white.withValues(alpha: 0.3)
-        : (isCurrent ? const Color(0xFF1DB954) : Colors.white);
+        : (isSelected ? Colors.white : Colors.white.withValues(alpha: 0.6));
     final subtitleColor = isDisabled
         ? Colors.white.withValues(alpha: 0.2)
-        : Colors.white.withValues(alpha: 0.6);
+        : (isSelected
+              ? Colors.white.withValues(alpha: 0.7)
+              : Colors.white.withValues(alpha: 0.45));
     final iconColor = isDisabled
         ? Colors.white.withValues(alpha: 0.2)
-        : Colors.white.withValues(alpha: 0.5);
+        : (isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4));
 
     return InkWell(
       onTap: isDisabled ? null : onTap,

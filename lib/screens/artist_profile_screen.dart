@@ -9,6 +9,7 @@ import '../widgets/song_list_item.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/skeleton_loader.dart';
 import 'player_screen.dart';
+import 'playlist_screen.dart';
 
 class ArtistProfileScreen extends StatefulWidget {
   final String artistId;
@@ -16,6 +17,8 @@ class ArtistProfileScreen extends StatefulWidget {
   final String? artistImage;
   final int? initialFollowers;
   final VoidCallback? onBackPressed; // Callback for embedded desktop navigation
+  final void Function(String playlistId)?
+  onAlbumSelected; // Callback for album navigation
 
   const ArtistProfileScreen({
     super.key,
@@ -25,6 +28,7 @@ class ArtistProfileScreen extends StatefulWidget {
     this.artistImage,
     this.initialFollowers,
     this.onBackPressed,
+    this.onAlbumSelected,
   });
 
   @override
@@ -173,8 +177,12 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
       final albumsData = await _api.getArtistAlbums(widget.artistId);
       final albums = albumsData.map((data) {
         // Map album data to Playlist model
+        // Use playlist_id as the id for navigation to PlaylistDetailScreen
+        final playlistId = data['playlist_id']?.toString() ?? '';
         return Playlist(
-          id: data['id'],
+          id: playlistId.isNotEmpty
+              ? playlistId
+              : data['id'], // Use playlist_id for navigation
           name: data['name'],
           coverImages: List<String>.from(data['cover_images'] ?? []),
           coverImageUrls: List<String>.from(data['cover_image_urls'] ?? []),
@@ -182,6 +190,7 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
               DateTime.tryParse(data['release_date'] ?? '') ?? DateTime.now(),
           songCount: data['play_count'] ?? 0, // Use play_count for display
           description: '',
+          albumId: data['id'], // Store original album ID
         );
       }).toList();
 
@@ -591,75 +600,99 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
                         ),
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final album = _albums[index];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AspectRatio(
-                            aspectRatio: 1,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey[800],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child:
-                                    (album.coverImageUrls.isNotEmpty ||
-                                        album.coverImages.isNotEmpty)
-                                    ? Image.network(
-                                        album.coverImageUrls.isNotEmpty
-                                            ? album.coverImageUrls[0]
-                                            : (album.coverImages[0].startsWith(
-                                                    'http',
-                                                  )
-                                                  ? album.coverImages[0]
-                                                  : '${ApiService.baseUrl}/${album.coverImages[0]}'),
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: Colors.grey[800],
-                                          child: const Center(
-                                            child: Icon(
-                                              Icons.album,
-                                              color: Colors.grey,
-                                              size: 48,
-                                            ),
+                      return InkWell(
+                        onTap: () {
+                          // Navigate to album playlist
+                          if (album.id.isNotEmpty) {
+                            final isLargeScreen =
+                                MediaQuery.of(context).size.width >= 800;
+                            // Use callback on desktop, Navigator.push on mobile
+                            if (widget.onAlbumSelected != null &&
+                                isLargeScreen) {
+                              widget.onAlbumSelected!(album.id);
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => PlaylistDetailScreen(
+                                    playlistId: album.id,
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+
+                        borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child:
+                                      (album.coverImageUrls.isNotEmpty ||
+                                          album.coverImages.isNotEmpty)
+                                      ? Image.network(
+                                          album.coverImageUrls.isNotEmpty
+                                              ? album.coverImageUrls[0]
+                                              : (album.coverImages[0]
+                                                        .startsWith('http')
+                                                    ? album.coverImages[0]
+                                                    : '${ApiService.baseUrl}/${album.coverImages[0]}'),
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                                color: Colors.grey[800],
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.album,
+                                                    color: Colors.grey,
+                                                    size: 48,
+                                                  ),
+                                                ),
+                                              ),
+                                        )
+                                      : const Center(
+                                          child: Icon(
+                                            Icons.album,
+                                            color: Colors.grey,
+                                            size: 48,
                                           ),
                                         ),
-                                      )
-                                    : const Center(
-                                        child: Icon(
-                                          Icons.album,
-                                          color: Colors.grey,
-                                          size: 48,
-                                        ),
-                                      ),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            album.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                            const SizedBox(height: 8),
+                            Text(
+                              album.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${album.createdAt.year} • Album',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
+                            const SizedBox(height: 2),
+                            Text(
+                              '${album.createdAt.year} • Album',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                          ],
+                        ),
                       );
                     }, childCount: _albums.length),
                   ),
@@ -1066,8 +1099,24 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
                     final album = _albums[index];
                     return InkWell(
                       onTap: () {
-                        // Navigate to album - Optional: Add navigation
+                        // Navigate to album playlist
+                        if (album.id.isNotEmpty) {
+                          final isLargeScreen =
+                              MediaQuery.of(context).size.width >= 800;
+                          // Use callback on desktop, Navigator.push on mobile
+                          if (widget.onAlbumSelected != null && isLargeScreen) {
+                            widget.onAlbumSelected!(album.id);
+                          } else {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PlaylistDetailScreen(playlistId: album.id),
+                              ),
+                            );
+                          }
+                        }
                       },
+
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
