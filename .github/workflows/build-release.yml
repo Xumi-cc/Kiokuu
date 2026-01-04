@@ -825,8 +825,26 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           
+          # Get previous tag for changelog
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          # Start release notes
           cat > release-notes.md << EOF
           # Kiokuu ${{ github.ref_name }}
+          
+          ## What's Changed
+          
+          EOF
+          
+          # Add commit messages since last tag (or all if first release)
+          if [ -n "$PREV_TAG" ]; then
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges >> release-notes.md
+          else
+            git log --pretty=format:"- %s" --no-merges -20 >> release-notes.md
+          fi
+          
+          # Add downloads section
+          cat >> release-notes.md << EOF
           
           ## Downloads
           
@@ -889,7 +907,7 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"  # Remove 'v' prefix
           
-          echo "📝 Updating version.json with version: $VERSION"
+          echo "Updating version.json with version: $VERSION"
           
           # Read current version.json and update
           if [ -f version.json ]; then
@@ -948,7 +966,7 @@ jobs:
           EOF
           fi
           
-          echo "📄 Updated version.json:"
+          echo "Updated version.json:"
           cat version.json
 
       - name: Commit and Push version.json
@@ -959,6 +977,6 @@ jobs:
           VERSION="${{ github.ref_name }}"
           
           git add version.json
-          git diff --staged --quiet || git commit -m "🔄 Update version.json to $VERSION [skip ci]"
+          git diff --staged --quiet || git commit -m "Update version.json to $VERSION [skip ci]"
           git push origin main
 

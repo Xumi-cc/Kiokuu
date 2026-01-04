@@ -37,8 +37,16 @@ class _LyricsScreenState extends State<LyricsScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // Restore mobile UI when leaving lyrics screen
-    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
+    // Restore window state when leaving lyrics screen
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      // Ensure fullscreen is exited and max size is restored (fallback)
+      windowManager.isFullScreen().then((isFullScreen) {
+        if (isFullScreen) {
+          windowManager.setFullScreen(false);
+        }
+        windowManager.setMaximumSize(const Size(1280, 720));
+      });
+    } else {
       SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.edgeToEdge,
         overlays: SystemUiOverlay.values,
@@ -49,6 +57,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
 
   Future<void> _enterFullscreen() async {
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      // Remove max size constraint first (required for Windows fullscreen)
+      await windowManager.setMaximumSize(const Size(0, 0));
       await windowManager.setFullScreen(true);
     } else {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -59,6 +69,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
     // Exit fullscreen first for smooth transition
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
       await windowManager.setFullScreen(false);
+      // Restore max size constraint
+      await windowManager.setMaximumSize(const Size(1280, 720));
       // Small delay to let window animation complete
       await Future.delayed(const Duration(milliseconds: 100));
     }
