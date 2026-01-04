@@ -5,26 +5,26 @@
     "force_update_message": "This update contains critical security fixes. Please update to continue using Kiokuu.",
     "download_urls": {
         "android": {
-            "arm64": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-arm64-v8a.apk",
-            "arm32": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-armeabi-v7a.apk",
-            "x86_64": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-x86_64.apk"
+            "arm64": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-arm64-v8a.apk",
+            "arm32": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-armeabi-v7a.apk",
+            "x86_64": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-x86_64.apk"
         },
         "ios": {
-            "ipa": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-ios.ipa"
+            "ipa": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-ios.ipa"
         },
         "windows": {
-            "portable": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-windows-portable.zip",
-            "msix": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-windows.msix"
+            "portable": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-windows-portable.zip",
+            "msix": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-windows.msix"
         },
         "macos": {
-            "dmg": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-macos.dmg"
+            "dmg": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-macos.dmg"
         },
         "linux": {
-            "appimage": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-x86_64.AppImage",
-            "deb": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu_{version}_amd64.deb",
-            "rpm": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-1.x86_64.rpm",
-            "flatpak": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}.flatpak",
-            "tarball": "https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-{version}-linux-x64.tar.gz"
+            "appimage": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-x86_64.AppImage",
+            "deb": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu_{version}_amd64.deb",
+            "rpm": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-1.x86_64.rpm",
+            "flatpak": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}.flatpak",
+            "tarball": "https://github.com/Xumi-cc/Kiokuu/releases/download/v{version}/kiokuu-{version}-linux-x64.tar.gz"
         }
     },
     "changelog_url": "https://github.com/Xumi-cc/Kiokuu/releases/latest"
