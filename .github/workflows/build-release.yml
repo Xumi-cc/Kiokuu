@@ -820,27 +820,32 @@ jobs:
           
           ls -la release-assets/
 
+      - name: Checkout for Release Notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog
+
       - name: Generate Release Notes
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           
-          # Get previous tag for changelog
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
           # Start release notes
-          cat > release-notes.md << EOF
+          cat > release-notes.md << 'EOF'
           # Kiokuu ${{ github.ref_name }}
           
           ## What's Changed
           
           EOF
           
-          # Add commit messages since last tag (or all if first release)
+          # Try to get changelog from git (will work if there are previous tags)
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
           if [ -n "$PREV_TAG" ]; then
             git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges >> release-notes.md
           else
-            git log --pretty=format:"- %s" --no-merges -20 >> release-notes.md
+            # First release - just add a simple message
+            echo "- Initial release" >> release-notes.md
           fi
           
           # Add downloads section
