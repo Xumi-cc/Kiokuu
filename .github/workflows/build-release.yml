@@ -70,11 +70,11 @@ jobs:
 
       # Build split APKs per ABI for reduced APK size
       - name: Build Split APKs (per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }}
 
       # Also build App Bundle for Play Store
       - name: Build App Bundle (AAB)
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --build-number=${{ github.run_number }}
 
       - name: Rename artifacts
         run: |
@@ -135,7 +135,7 @@ jobs:
 
       - name: Build iOS (No Code Signing for CI)
         run: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
 
       - name: Create IPA
         run: |
@@ -185,7 +185,7 @@ jobs:
           pod install || true  # Some projects don't use pods
 
       - name: Build macOS
-        run: flutter build macos --release
+        run: flutter build macos --release --build-number=${{ github.run_number }}
 
       - name: Create DMG
         run: |
@@ -238,7 +238,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release
+        run: flutter build windows --release --build-number=${{ github.run_number }}
 
       - name: Create MSIX Package
         run: |
@@ -316,7 +316,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux
-        run: flutter build linux --release
+        run: flutter build linux --release --build-number=${{ github.run_number }}
 
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
@@ -722,7 +722,7 @@ jobs:
         run: |
           export PATH="/opt/flutter/bin:$PATH"
           flutter pub get
-          flutter build linux --release
+          flutter build linux --release --build-number=${{ github.run_number }}
 
       - name: Create Desktop Entry for Flatpak
         run: |
