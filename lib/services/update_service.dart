@@ -196,27 +196,73 @@ class UpdateService {
     if (downloadUrls == null) return null;
 
     String? urlTemplate;
+
     if (Platform.isAndroid) {
-      urlTemplate = downloadUrls['android'] as String?;
+      final androidUrls = downloadUrls['android'];
+      if (androidUrls is Map<String, dynamic>) {
+        // Prefer arm64, then arm32, then x86_64
+        urlTemplate =
+            androidUrls['arm64'] as String? ??
+            androidUrls['arm32'] as String? ??
+            androidUrls['x86_64'] as String?;
+      } else if (androidUrls is String) {
+        urlTemplate = androidUrls;
+      }
     } else if (Platform.isIOS) {
-      urlTemplate = downloadUrls['ios'] as String?;
+      final iosUrls = downloadUrls['ios'];
+      if (iosUrls is Map<String, dynamic>) {
+        urlTemplate = iosUrls['ipa'] as String?;
+      } else if (iosUrls is String) {
+        urlTemplate = iosUrls;
+      }
     } else if (Platform.isWindows) {
-      urlTemplate = downloadUrls['windows'] as String?;
+      final windowsUrls = downloadUrls['windows'];
+      if (windowsUrls is Map<String, dynamic>) {
+        // Prefer portable, then msix
+        urlTemplate =
+            windowsUrls['portable'] as String? ??
+            windowsUrls['msix'] as String?;
+      } else if (windowsUrls is String) {
+        urlTemplate = windowsUrls;
+      }
     } else if (Platform.isMacOS) {
-      urlTemplate = downloadUrls['macos'] as String?;
+      final macosUrls = downloadUrls['macos'];
+      if (macosUrls is Map<String, dynamic>) {
+        urlTemplate = macosUrls['dmg'] as String?;
+      } else if (macosUrls is String) {
+        urlTemplate = macosUrls;
+      }
     } else if (Platform.isLinux) {
       final installType = _getLinuxInstallationType();
       debugPrint('[UpdateService] Linux installation type: $installType');
 
-      // If it's an AppImage, we can give the direct link
-      if (installType == LinuxInstallationType.appImage) {
-        urlTemplate = downloadUrls['linux'] as String?;
-      } else {
-        // For other types (DEB, RPM, Flatpak), it's safer to send them to the
-        // releases page so they can pick the right format or update via their
-        // package manager.
-        return versionInfo['changelog_url'] as String? ??
-            'https://github.com/$_owner/$_repo/releases/latest';
+      final linuxUrls = downloadUrls['linux'];
+      if (linuxUrls is Map<String, dynamic>) {
+        // Match URL to installation type
+        switch (installType) {
+          case LinuxInstallationType.appImage:
+            urlTemplate = linuxUrls['appimage'] as String?;
+            break;
+          case LinuxInstallationType.flatpak:
+            urlTemplate = linuxUrls['flatpak'] as String?;
+            break;
+          case LinuxInstallationType.systemPackage:
+            // For system packages, go to releases page
+            return versionInfo['changelog_url'] as String? ??
+                'https://github.com/$_owner/$_repo/releases/latest';
+          case LinuxInstallationType.unknown:
+            // Default to AppImage
+            urlTemplate = linuxUrls['appimage'] as String?;
+            break;
+        }
+      } else if (linuxUrls is String) {
+        if (installType == LinuxInstallationType.appImage ||
+            installType == LinuxInstallationType.unknown) {
+          urlTemplate = linuxUrls;
+        } else {
+          return versionInfo['changelog_url'] as String? ??
+              'https://github.com/$_owner/$_repo/releases/latest';
+        }
       }
     }
 
