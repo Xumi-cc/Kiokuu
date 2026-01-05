@@ -92,6 +92,9 @@ dependencies:
   
   # App version info (for update system)
   package_info_plus: ^8.0.0
+  
+  # Polished lyrics display
+  flutter_lyric: ^3.0.2
 
 dev_dependencies:
   flutter_test:
