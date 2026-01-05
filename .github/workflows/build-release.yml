@@ -802,6 +802,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout for Release Notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog
+
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -819,11 +824,6 @@ jobs:
             -exec cp {} release-assets/ \;
           
           ls -la release-assets/
-
-      - name: Checkout for Release Notes
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for changelog
 
       - name: Generate Release Notes
         run: |
