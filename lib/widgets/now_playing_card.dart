@@ -190,6 +190,8 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Invisible spacer to balance the right icon (same size as IconButton)
+                      const SizedBox(width: 48, height: 48),
                       Expanded(
                         child: PageTransitionSwitcher(
                           duration: const Duration(milliseconds: 300),
