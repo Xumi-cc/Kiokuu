@@ -1,0 +1,75 @@
+# Maintainer: Kiokuu Team <support@kiokuu.app>
+pkgname=kiokuu
+pkgver=0.9.2
+pkgrel=1
+pkgdesc="A beautiful music streaming and management application"
+arch=('x86_64')
+url="https://github.com/Xumi-cc/Kiokuu"
+license=('custom:proprietary')
+depends=(
+    'gtk3'
+    'mpv'
+    'libsecret'
+    'hicolor-icon-theme'
+)
+optdepends=(
+    'pulseaudio: PulseAudio support'
+    'pipewire-pulse: PipeWire PulseAudio support'
+)
+provides=('kiokuu')
+conflicts=('kiokuu-bin' 'kiokuu-git')
+options=('!strip')
+source=("https://github.com/Xumi-cc/Kiokuu/releases/download/v${pkgver}/kiokuu-${pkgver}-linux-x64.tar.gz")
+sha256sums=('SKIP')  # Will be updated by CI
+
+package() {
+    cd "${srcdir}"
+    
+    # Create directories
+    install -dm755 "${pkgdir}/usr/lib/${pkgname}"
+    install -dm755 "${pkgdir}/usr/bin"
+    install -dm755 "${pkgdir}/usr/share/applications"
+    install -dm755 "${pkgdir}/usr/share/icons/hicolor/256x256/apps"
+    install -dm755 "${pkgdir}/usr/share/pixmaps"
+    install -dm755 "${pkgdir}/usr/share/licenses/${pkgname}"
+    
+    # Copy application files
+    cp -r * "${pkgdir}/usr/lib/${pkgname}/"
+    
+    # Create launcher script
+    cat > "${pkgdir}/usr/bin/${pkgname}" << 'EOF'
+#!/bin/bash
+cd /usr/lib/kiokuu
+./kiokuu "$@"
+EOF
+    chmod +x "${pkgdir}/usr/bin/${pkgname}"
+    
+    # Create desktop entry
+    cat > "${pkgdir}/usr/share/applications/${pkgname}.desktop" << 'EOF'
+[Desktop Entry]
+Name=Kiokuu
+Comment=A beautiful music streaming and management application
+Exec=kiokuu
+Icon=kiokuu
+Terminal=false
+Type=Application
+Categories=Audio;Music;Player;AudioVideo;
+Keywords=music;audio;streaming;player;cloud;
+StartupNotify=true
+StartupWMClass=kiokuu
+EOF
+    
+    # Copy icon (this will be provided in the tarball or we use a placeholder)
+    if [ -f "data/flutter_assets/assets/images/logo_black_bg_white.png" ]; then
+        install -Dm644 "data/flutter_assets/assets/images/logo_black_bg_white.png" \
+            "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${pkgname}.png"
+        install -Dm644 "data/flutter_assets/assets/images/logo_black_bg_white.png" \
+            "${pkgdir}/usr/share/pixmaps/${pkgname}.png"
+    fi
+    
+    # Create license file
+    cat > "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" << 'EOF'
+Copyright (c) 2024-2026 Kiokuu Team
+All Rights Reserved
+EOF
+}

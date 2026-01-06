@@ -37,120 +37,117 @@ class ForceUpdateScreen extends StatelessWidget {
 
         // Main content
         SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              children: [
-                // Push content down slightly to account for title bar
-                const Spacer(flex: 3),
-
-                // App logo with filled background
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: SvgPicture.asset(
-                      'assets/images/kiokuu_white.svg',
-                      width: 40,
-                      height: 40,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // App logo with filled background
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: SvgPicture.asset(
+                        'assets/images/kiokuu_white.svg',
+                        width: 40,
+                        height: 40,
+                      ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-                // Title
-                Text(
-                  'Update Required',
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // Version chip
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(8),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    'v${updateInfo.currentVersion}  →  v${updateInfo.minimumVersion}',
+                  // Title
+                  Text(
+                    'Update Required',
                     style: GoogleFonts.inter(
-                      color: Colors.grey[500],
-                      fontSize: 13,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Subtitle
-                Text(
-                  'A new version is available with\nimportant improvements',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Update button
-                ElevatedButton(
-                  onPressed: () => _openDownloadLink(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    'Update Now',
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
+                      color: Colors.white,
+                      fontSize: 22,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
-                // Release notes link
-                TextButton(
-                  onPressed: () => _openChangelog(context),
-                  child: Text(
-                    'View changelog',
-                    style: GoogleFonts.inter(
-                      color: Colors.grey[600],
-                      fontSize: 13,
+                  // Version chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(8),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      'v${updateInfo.currentVersion}  →  v${updateInfo.latestVersion}',
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[500],
+                        fontSize: 13,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
-                ),
 
-                // Bottom spacer to balance the content
-                const Spacer(flex: 4),
-              ],
+                  const SizedBox(height: 12),
+
+                  // Subtitle
+                  Text(
+                    'A new version is available with\nimportant improvements',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // Update button
+                  ElevatedButton(
+                    onPressed: () => _openDownloadLink(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'Update Now',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Release notes link
+                  TextButton(
+                    onPressed: () => _openChangelog(context),
+                    child: Text(
+                      'View changelog',
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[600],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -177,22 +174,30 @@ class ForceUpdateScreen extends StatelessWidget {
     final url = updateInfo.downloadUrl ?? updateInfo.changelogUrl;
     try {
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      // Try to launch regardless of canLaunchUrl - it can return false incorrectly on some devices
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('Failed to open download link: $e');
+      // Show a snackbar with the URL as fallback
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Open: $url')));
+      }
     }
   }
 
   Future<void> _openChangelog(BuildContext context) async {
     try {
       final uri = Uri.parse(updateInfo.changelogUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('Failed to open changelog: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Open: ${updateInfo.changelogUrl}')),
+        );
+      }
     }
   }
 }

@@ -75,7 +75,7 @@ class AppConfig {
   // ============================================================
 
   static const String appName = 'KioKuu';
-  static const String appVersion = '0.9.2';
+  static const String appVersion = '0.9.1';
 
   // ============================================================
   // Feature Flags

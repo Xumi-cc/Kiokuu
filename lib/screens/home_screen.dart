@@ -3645,16 +3645,29 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
 
-          // Mobile: Search icon
-          if (!isLargeScreen)
+          // Mobile: Action icons with proper spacing
+          if (!isLargeScreen) ...[
+            IconButton(
+              onPressed: _showUploadDialog,
+              icon: const Icon(Icons.add, size: 26),
+              color: Colors.white,
+              tooltip: 'Upload Music',
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 8),
             IconButton(
               onPressed: () {
-                // TODO: Open search screen/overlay
+                setState(() => _selectedNavIndex = 1);
               },
-              icon: const Icon(Icons.search),
+              icon: const Icon(Icons.search, size: 24),
               color: Colors.white,
               tooltip: 'Search',
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(),
             ),
+            const SizedBox(width: 12),
+          ],
 
           // Desktop only: Refresh button (mobile uses pull-to-refresh)
           if (isLargeScreen)
@@ -3674,7 +3687,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             child: CircleAvatar(
-              radius: isLargeScreen ? 18 : 16,
+              radius: isLargeScreen ? 18 : 17,
               backgroundImage: _userPhotoUrl != null
                   ? NetworkImage(_userPhotoUrl!)
                   : null,
@@ -3682,7 +3695,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _userPhotoUrl == null
                   ? Icon(
                       Icons.person,
-                      size: isLargeScreen ? 18 : 16,
+                      size: isLargeScreen ? 18 : 17,
                       color: Colors.grey[400],
                     )
                   : null,

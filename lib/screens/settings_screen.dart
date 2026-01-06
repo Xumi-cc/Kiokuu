@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/api_service.dart';
 import '../services/discord_rpc_service.dart';
 import '../services/extension_manager_service.dart';
@@ -3056,144 +3057,155 @@ class _SettingsContentState extends State<_SettingsContent> {
       padding: const EdgeInsets.only(bottom: 12),
       child: _SettingsCard(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              leading: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: ext.isEnabled
-                      ? const Color(0xFF4F6BF6).withAlpha(30)
-                      : Colors.grey.withAlpha(20),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  _getExtensionTypeIcon(ext.type),
-                  color: ext.isEnabled ? const Color(0xFF4F6BF6) : Colors.grey,
-                  size: 24,
-                ),
-              ),
-              title: Row(
+            // Main content
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    ext.name,
-                    style: TextStyle(
-                      color: ext.isEnabled ? Colors.white : Colors.grey,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+                  // Icon
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(4),
+                      color: ext.isEnabled
+                          ? const Color(0xFF4F6BF6).withAlpha(30)
+                          : Colors.grey.withAlpha(20),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(
-                      'v${ext.version}',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                    child: Icon(
+                      _getExtensionTypeIcon(ext.type),
+                      color: ext.isEnabled
+                          ? const Color(0xFF4F6BF6)
+                          : Colors.grey,
+                      size: 22,
                     ),
                   ),
-                  if (hasUpdate) ...[
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.amber,
-                      size: 16,
-                    ),
-                  ],
-                ],
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                  const SizedBox(width: 12),
+                  // Content
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.person_outline,
-                          size: 12,
-                          color: Colors.grey[600],
+                        // Name row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                ext.name,
+                                style: TextStyle(
+                                  color: ext.isEnabled
+                                      ? Colors.white
+                                      : Colors.grey,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (hasUpdate)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '↑ $newVersion',
+                                  style: const TextStyle(
+                                    color: Colors.amber,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              )
+                            else
+                              Text(
+                                'v${ext.version}',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 11,
+                                ),
+                              ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(height: 4),
+                        // Author
                         Text(
                           ext.author,
                           style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 11,
+                            color: Colors.grey[500],
+                            fontSize: 12,
                           ),
                         ),
+                        if (ext.description.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            ext.description,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      ext.description.isNotEmpty
-                          ? ext.description
-                          : ext.supportedDomains.join(', '),
-                      style: TextStyle(color: Colors.grey[500], fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Switch(
-                value: ext.isEnabled,
-                onChanged: (value) async {
-                  await extensionService.setExtensionEnabled(ext.id, value);
-                  setState(() {});
-                },
-                activeColor: const Color(0xFF4F6BF6),
+                  ),
+                  const SizedBox(width: 8),
+                  // Toggle
+                  Switch(
+                    value: ext.isEnabled,
+                    onChanged: (value) async {
+                      await extensionService.setExtensionEnabled(ext.id, value);
+                      setState(() {});
+                    },
+                    activeColor: Colors.white,
+                    activeTrackColor: const Color(0xFF4F6BF6),
+                    inactiveThumbColor: Colors.grey[400],
+                    inactiveTrackColor: Colors.grey[800],
+                  ),
+                ],
               ),
             ),
-            // Sub-actions area
+            // Divider
+            Container(height: 1, color: Colors.white.withOpacity(0.05)),
+            // Action buttons
             Row(
               children: [
                 Expanded(
                   child: Material(
-                    color: Colors.white.withOpacity(0.02),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(12),
-                    ),
+                    color: Colors.transparent,
                     child: InkWell(
                       onTap: hasUpdate
                           ? () => _updateExtension(extensionService, ext.id)
                           : _checkForExtensionUpdates,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(12),
-                      ),
-                      hoverColor: hasUpdate
-                          ? Colors.greenAccent.withOpacity(0.1)
-                          : Colors.white.withOpacity(0.05),
-                      splashColor: hasUpdate
-                          ? Colors.greenAccent.withOpacity(0.2)
-                          : Colors.white.withOpacity(0.1),
-                      child: Container(
+                      child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: hasUpdate
                               ? [
                                   const Icon(
-                                    Icons.system_update_alt,
+                                    Icons.download_rounded,
                                     size: 16,
                                     color: Colors.greenAccent,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Update to v$newVersion',
-                                    style: const TextStyle(
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Update',
+                                    style: TextStyle(
                                       color: Colors.greenAccent,
-                                      fontSize: 12,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ]
@@ -3211,17 +3223,17 @@ class _SettingsContentState extends State<_SettingsContent> {
                                       ),
                                     )
                                   else
-                                    const Icon(
+                                    Icon(
                                       Icons.refresh,
-                                      size: 14,
-                                      color: Colors.grey,
+                                      size: 16,
+                                      color: Colors.grey[500],
                                     ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 6),
                                   Text(
                                     'Check Updates',
                                     style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 11,
+                                      color: Colors.grey[500],
+                                      fontSize: 13,
                                     ),
                                   ),
                                 ],
@@ -3232,38 +3244,30 @@ class _SettingsContentState extends State<_SettingsContent> {
                 ),
                 Container(
                   width: 1,
-                  height: 40,
+                  height: 36,
                   color: Colors.white.withOpacity(0.05),
                 ),
                 Expanded(
                   child: Material(
-                    color: Colors.white.withOpacity(0.02),
-                    borderRadius: const BorderRadius.only(
-                      bottomRight: Radius.circular(12),
-                    ),
+                    color: Colors.transparent,
                     child: InkWell(
                       onTap: () => _removeExtension(extensionService, ext),
-                      borderRadius: const BorderRadius.only(
-                        bottomRight: Radius.circular(12),
-                      ),
-                      hoverColor: Colors.redAccent.withOpacity(0.1),
-                      splashColor: Colors.redAccent.withOpacity(0.2),
-                      child: Container(
+                      child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(
+                          children: [
+                            const Icon(
                               Icons.delete_outline,
                               size: 16,
                               color: Colors.redAccent,
                             ),
-                            SizedBox(width: 8),
-                            Text(
+                            const SizedBox(width: 6),
+                            const Text(
                               'Remove',
                               style: TextStyle(
                                 color: Colors.redAccent,
-                                fontSize: 12,
+                                fontSize: 13,
                               ),
                             ),
                           ],
@@ -5049,10 +5053,12 @@ class _SettingsContentState extends State<_SettingsContent> {
                         color: const Color(0xFF5865F2).withAlpha(30),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
-                        Icons.discord,
-                        color: Color(0xFF5865F2),
-                        size: 28,
+                      child: const Center(
+                        child: FaIcon(
+                          FontAwesomeIcons.discord,
+                          color: Color(0xFF5865F2),
+                          size: 26,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -5207,11 +5213,6 @@ class _SettingsContentState extends State<_SettingsContent> {
                 Text(
                   'More connections coming soon',
                   style: TextStyle(color: Colors.grey[500], fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Spotify, Last.fm, and more',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
               ],
             ),

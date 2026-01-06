@@ -349,7 +349,7 @@ jobs:
           cat > linux/packaging/deb/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.DEB_PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.com>
+          maintainer: Kiokuu Team <support@kiokuu.app>
           description: A beautiful music streaming and management application
           long_description: |
             Kiokuu is a feature-rich music application that allows you to 
@@ -380,7 +380,7 @@ jobs:
           cat > linux/packaging/rpm/make_config.yaml << EOF
           display_name: ${{ env.APP_NAME }}
           package_name: ${{ env.PACKAGE_NAME }}
-          maintainer: Kiokuu Team <support@kiokuu.com>
+          maintainer: Kiokuu Team <support@kiokuu.app>
           description: A beautiful music streaming and management application
           license: Proprietary
           group: Applications/Multimedia
@@ -473,7 +473,7 @@ jobs:
           Priority: optional
           Architecture: amd64
           Installed-Size: ${INSTALLED_SIZE}
-          Maintainer: Kiokuu Team <support@kiokuu.com>
+          Maintainer: Kiokuu Team <support@kiokuu.app>
           Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
           Homepage: https://github.com/Xumi-cc/Kiokuu
           Description: A beautiful music streaming and management application
@@ -563,7 +563,7 @@ jobs:
           /usr/share/pixmaps/%{name}.png
           
           %changelog
-          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.com> - ${VERSION}-1
+          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.app> - ${VERSION}-1
           - Initial release
           SPEC
           
@@ -792,11 +792,166 @@ jobs:
           retention-days: 30
 
   # ============================================================================
+  # ARCH LINUX BUILD - PKGBUILD for AUR
+  # ============================================================================
+  build-arch:
+    name: Build Arch Linux (PKGBUILD)
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git curl unzip xz clang cmake \
+            ninja gtk3 pkgconf mesa libsecret mpv
+
+      - name: Setup Flutter
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable /opt/flutter --depth 1
+          export PATH="/opt/flutter/bin:$PATH"
+          flutter config --no-analytics
+          flutter doctor
+
+      - name: Get dependencies
+        run: |
+          export PATH="/opt/flutter/bin:$PATH"
+          flutter pub get
+
+      - name: Build Linux
+        run: |
+          export PATH="/opt/flutter/bin:$PATH"
+          flutter build linux --release --build-number=${{ github.run_number }}
+
+      - name: Create tarball and PKGBUILD
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p release-artifacts/arch
+          
+          # Create tarball
+          cd build/linux/x64/release/bundle
+          tar czf "../../../../../release-artifacts/arch/${{ env.PACKAGE_NAME }}-${VERSION}-linux-x64.tar.gz" .
+          cd ../../../../../
+          
+          # Calculate SHA256
+          SHA256=$(sha256sum "release-artifacts/arch/${{ env.PACKAGE_NAME }}-${VERSION}-linux-x64.tar.gz" | cut -d' ' -f1)
+          
+          # Create PKGBUILD
+          cat > release-artifacts/arch/PKGBUILD << EOF
+          # Maintainer: Kiokuu Team <support@kiokuu.app>
+          pkgname=${{ env.PACKAGE_NAME }}
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="A beautiful music streaming and management application"
+          arch=('x86_64')
+          url="https://github.com/Xumi-cc/Kiokuu"
+          license=('custom:proprietary')
+          depends=(
+              'gtk3'
+              'mpv'
+              'libsecret'
+              'hicolor-icon-theme'
+          )
+          optdepends=(
+              'pulseaudio: PulseAudio support'
+              'pipewire-pulse: PipeWire PulseAudio support'
+          )
+          provides=('${{ env.PACKAGE_NAME }}')
+          conflicts=('${{ env.PACKAGE_NAME }}-bin' '${{ env.PACKAGE_NAME }}-git')
+          options=('!strip')
+          source=("https://github.com/Xumi-cc/Kiokuu/releases/download/v\${pkgver}/${{ env.PACKAGE_NAME }}-\${pkgver}-linux-x64.tar.gz")
+          sha256sums=('${SHA256}')
+          
+          package() {
+              cd "\${srcdir}"
+              
+              install -dm755 "\${pkgdir}/usr/lib/\${pkgname}"
+              install -dm755 "\${pkgdir}/usr/bin"
+              install -dm755 "\${pkgdir}/usr/share/applications"
+              install -dm755 "\${pkgdir}/usr/share/icons/hicolor/256x256/apps"
+              install -dm755 "\${pkgdir}/usr/share/pixmaps"
+              install -dm755 "\${pkgdir}/usr/share/licenses/\${pkgname}"
+              
+              cp -r * "\${pkgdir}/usr/lib/\${pkgname}/"
+              
+              cat > "\${pkgdir}/usr/bin/\${pkgname}" << 'LAUNCHER'
+          #!/bin/bash
+          cd /usr/lib/${{ env.PACKAGE_NAME }}
+          ./${{ env.PACKAGE_NAME }} "\$@"
+          LAUNCHER
+              chmod +x "\${pkgdir}/usr/bin/\${pkgname}"
+              
+              cat > "\${pkgdir}/usr/share/applications/\${pkgname}.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Name=${{ env.APP_NAME }}
+          Comment=A beautiful music streaming and management application
+          Exec=${{ env.PACKAGE_NAME }}
+          Icon=${{ env.PACKAGE_NAME }}
+          Terminal=false
+          Type=Application
+          Categories=Audio;Music;Player;AudioVideo;
+          Keywords=music;audio;streaming;player;cloud;
+          StartupNotify=true
+          StartupWMClass=${{ env.PACKAGE_NAME }}
+          DESKTOP
+              
+              if [ -f "data/flutter_assets/assets/images/logo_black_bg_white.png" ]; then
+                  install -Dm644 "data/flutter_assets/assets/images/logo_black_bg_white.png" \
+                      "\${pkgdir}/usr/share/icons/hicolor/256x256/apps/\${pkgname}.png"
+                  install -Dm644 "data/flutter_assets/assets/images/logo_black_bg_white.png" \
+                      "\${pkgdir}/usr/share/pixmaps/\${pkgname}.png"
+              fi
+              
+              cat > "\${pkgdir}/usr/share/licenses/\${pkgname}/LICENSE" << 'LICENSE'
+          Copyright (c) 2024-2026 Kiokuu Team
+          All Rights Reserved
+          LICENSE
+          }
+          EOF
+          
+          # Create .SRCINFO
+          cat > release-artifacts/arch/.SRCINFO << EOF
+          pkgbase = ${{ env.PACKAGE_NAME }}
+          	pkgdesc = A beautiful music streaming and management application
+          	pkgver = ${VERSION}
+          	pkgrel = 1
+          	url = https://github.com/Xumi-cc/Kiokuu
+          	arch = x86_64
+          	license = custom:proprietary
+          	depends = gtk3
+          	depends = mpv
+          	depends = libsecret
+          	depends = hicolor-icon-theme
+          	optdepends = pulseaudio: PulseAudio support
+          	optdepends = pipewire-pulse: PipeWire PulseAudio support
+          	provides = ${{ env.PACKAGE_NAME }}
+          	conflicts = ${{ env.PACKAGE_NAME }}-bin
+          	conflicts = ${{ env.PACKAGE_NAME }}-git
+          	options = !strip
+          	source = https://github.com/Xumi-cc/Kiokuu/releases/download/v${VERSION}/${{ env.PACKAGE_NAME }}-${VERSION}-linux-x64.tar.gz
+          	sha256sums = ${SHA256}
+          
+          pkgname = ${{ env.PACKAGE_NAME }}
+          EOF
+
+      - name: Upload Arch Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-release
+          path: release-artifacts/arch/
+          retention-days: 30
+
+  # ============================================================================
   # CREATE GITHUB RELEASE
   # ============================================================================
   create-release:
     name: Create GitHub Release
-    needs: [build-android, build-ios, build-macos, build-windows, build-linux, build-flatpak]
+    needs: [build-android, build-ios, build-macos, build-windows, build-linux, build-flatpak, build-arch]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -820,7 +975,7 @@ jobs:
           find artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.ipa" \
             -o -name "*.dmg" -o -name "*.zip" -o -name "*.msix" \
             -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" \
-            -o -name "*.flatpak" -o -name "*.tar.gz" \) \
+            -o -name "*.flatpak" -o -name "*.tar.gz" -o -name "PKGBUILD" \) \
             -exec cp {} release-assets/ \;
           
           ls -la release-assets/
@@ -869,10 +1024,23 @@ jobs:
           - \`kiokuu-${VERSION}-windows.msix\` - Installer
           
           **Linux**
-          - \`kiokuu-${VERSION}-x86_64.AppImage\` - Universal
-          - \`kiokuu_${VERSION}_amd64.deb\` - Debian/Ubuntu
-          - \`kiokuu-${VERSION}-1.x86_64.rpm\` - Fedora/RHEL
+          - \`kiokuu-${VERSION}-x86_64.AppImage\` - Universal (recommended)
+          - \`kiokuu_${VERSION}_amd64.deb\` - Debian/Ubuntu (apt)
+          - \`kiokuu-${VERSION}-1.x86_64.rpm\` - Fedora/RHEL (dnf)
           - \`kiokuu-${VERSION}.flatpak\` - Flatpak
+          - PKGBUILD available in \`arch-release\` artifact - Arch Linux (AUR)
+          
+          ## Linux Repository Installation
+          
+          **Arch Linux (AUR):** \`yay -S kiokuu\` or \`paru -S kiokuu\`
+          
+          **Fedora/RHEL (COPR):** \`sudo dnf copr enable kiokuu/kiokuu && sudo dnf install kiokuu\`
+          
+          **Debian/Ubuntu (APT):** 
+          \\`\\`\\`bash
+          echo "deb [trusted=yes] https://xumi-cc.github.io/Kiokuu/apt stable main" | sudo tee /etc/apt/sources.list.d/kiokuu.list
+          sudo apt update && sudo apt install kiokuu
+          \\`\\`\\`
           
           ---
           
@@ -984,4 +1152,448 @@ jobs:
           git add version.json
           git diff --staged --quiet || git commit -m "Update version.json to $VERSION [skip ci]"
           git push origin main
+
+  # ============================================================================
+  # PUBLISH TO GOOGLE PLAY STORE
+  # ============================================================================
+  publish-play-store:
+    name: Publish to Google Play Store
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release
+          path: artifacts
+
+      - name: Setup Ruby (for fastlane)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install Fastlane
+        run: gem install fastlane
+
+      - name: Create Google Play credentials file
+        env:
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: |
+          if [ -n "$PLAY_STORE_JSON_KEY" ]; then
+            echo "$PLAY_STORE_JSON_KEY" > play-store-key.json
+          else
+            echo "PLAY_STORE_JSON_KEY not configured, skipping Play Store upload"
+            exit 0
+          fi
+
+      - name: Upload to Play Store (Internal Track)
+        env:
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: |
+          if [ -z "$PLAY_STORE_JSON_KEY" ]; then
+            echo "Skipping Play Store upload - no credentials"
+            exit 0
+          fi
+          
+          # Find the AAB file
+          AAB_FILE=$(find artifacts -name "*.aab" | head -1)
+          
+          if [ -n "$AAB_FILE" ]; then
+            echo "Uploading $AAB_FILE to Play Store..."
+            
+            # Use fastlane supply to upload
+            fastlane supply \
+              --aab "$AAB_FILE" \
+              --track internal \
+              --package_name "${{ env.APP_ID }}" \
+              --json_key play-store-key.json \
+              --skip_upload_metadata \
+              --skip_upload_images \
+              --skip_upload_screenshots
+            
+            echo "✅ Uploaded to Play Store Internal Track"
+            echo "Review and promote to production at: https://play.google.com/console"
+          else
+            echo "No AAB file found!"
+            exit 1
+          fi
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f play-store-key.json
+
+  # ============================================================================
+  # PUBLISH TO COPR (Fedora/RHEL DNF Repository)
+  # ============================================================================
+  publish-copr:
+    name: Publish to COPR (Fedora)
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download RPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release
+          path: artifacts
+
+      - name: Install COPR CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip3 install copr-cli
+
+      - name: Configure COPR
+        env:
+          COPR_API_TOKEN: ${{ secrets.COPR_API_TOKEN }}
+        run: |
+          mkdir -p ~/.config
+          cat > ~/.config/copr << EOF
+          [copr-cli]
+          login = ${{ secrets.COPR_LOGIN }}
+          username = ${{ secrets.COPR_USERNAME }}
+          token = ${COPR_API_TOKEN}
+          copr_url = https://copr.fedorainfracloud.org
+          EOF
+
+      - name: Upload to COPR
+        run: |
+          # Find the RPM file
+          RPM_FILE=$(find artifacts -name "*.rpm" | head -1)
+          
+          if [ -n "$RPM_FILE" ]; then
+            echo "Uploading $RPM_FILE to COPR..."
+            copr-cli build ${{ secrets.COPR_PROJECT }} "$RPM_FILE" || echo "COPR upload failed - check secrets"
+          else
+            echo "No RPM file found!"
+            exit 1
+          fi
+
+  # ============================================================================
+  # PUBLISH TO APT REPOSITORY (Debian/Ubuntu)
+  # ============================================================================
+  publish-apt:
+    name: Publish to APT Repository
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download DEB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release
+          path: artifacts
+
+      - name: Setup APT repository structure
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p apt-repo/pool/main/k/${{ env.PACKAGE_NAME }}
+          mkdir -p apt-repo/dists/stable/main/binary-amd64
+          
+          # Find and copy DEB file
+          DEB_FILE=$(find artifacts -name "*.deb" | head -1)
+          cp "$DEB_FILE" apt-repo/pool/main/k/${{ env.PACKAGE_NAME }}/
+
+      - name: Generate APT repository metadata
+        run: |
+          cd apt-repo
+          
+          # Generate Packages file
+          dpkg-scanpackages pool/ > dists/stable/main/binary-amd64/Packages
+          gzip -k dists/stable/main/binary-amd64/Packages
+          
+          # Generate Release file
+          cat > dists/stable/Release << EOF
+          Origin: Kiokuu
+          Label: Kiokuu
+          Suite: stable
+          Codename: stable
+          Version: 1.0
+          Architectures: amd64
+          Components: main
+          Description: Kiokuu Music Application Repository
+          EOF
+          
+          # Add checksums to Release
+          cd dists/stable
+          echo "SHA256:" >> Release
+          for file in main/binary-amd64/Packages main/binary-amd64/Packages.gz; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" | awk '{print " " $1 " " length " " $2}' >> Release
+            fi
+          done
+
+      - name: Sign repository (if GPG key available)
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+            
+            cd apt-repo/dists/stable
+            gpg --batch --yes --pinentry-mode loopback \
+                --passphrase "$GPG_PASSPHRASE" \
+                --armor --detach-sign --output Release.gpg Release
+            
+            gpg --batch --yes --pinentry-mode loopback \
+                --passphrase "$GPG_PASSPHRASE" \
+                --clearsign --output InRelease Release
+          else
+            echo "No GPG key configured, skipping signing"
+          fi
+
+      - name: Deploy APT repo to GitHub Pages
+        run: |
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Clone or create gh-pages branch
+          git clone --depth 1 --branch gh-pages https://github.com/${{ github.repository }}.git gh-pages-repo 2>/dev/null || {
+            mkdir gh-pages-repo
+            cd gh-pages-repo
+            git init
+            git checkout -b gh-pages
+            cd ..
+          }
+          
+          # Create apt directory structure in gh-pages
+          mkdir -p gh-pages-repo/apt
+          cp -r apt-repo/* gh-pages-repo/apt/
+          
+          # Create index.html for the apt directory
+          cat > gh-pages-repo/apt/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html>
+          <head><title>Kiokuu APT Repository</title></head>
+          <body>
+          <h1>Kiokuu APT Repository</h1>
+          <h2>Installation</h2>
+          <pre>
+          # Add GPG key (if signed)
+          curl -fsSL https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/kiokuu.gpg
+
+          # Add repository
+          echo "deb [signed-by=/usr/share/keyrings/kiokuu.gpg] https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt stable main" | \
+            sudo tee /etc/apt/sources.list.d/kiokuu.list
+
+          # Or without GPG (unsigned):
+          echo "deb [trusted=yes] https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt stable main" | \
+            sudo tee /etc/apt/sources.list.d/kiokuu.list
+
+          # Update and install
+          sudo apt update
+          sudo apt install kiokuu
+          </pre>
+          </body>
+          </html>
+          HTML
+          
+          # Export public GPG key if available
+          if gpg --list-keys 2>/dev/null | grep -q .; then
+            gpg --armor --export > gh-pages-repo/apt/gpg.key
+          fi
+          
+          cd gh-pages-repo
+          git add -A
+          git commit -m "Update APT repository for ${{ github.ref_name }}" || echo "No changes to commit"
+          
+          # Push to gh-pages branch
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git gh-pages --force
+
+      - name: Upload APT repo artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: apt-repository
+          path: apt-repo/
+          retention-days: 90
+
+  # ============================================================================
+  # PUBLISH TO AUR (Arch User Repository)
+  # ============================================================================
+  publish-aur:
+    name: Publish to AUR
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Arch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-release
+          path: artifacts
+
+      - name: Setup SSH for AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "$AUR_SSH_PRIVATE_KEY" ]; then
+            mkdir -p ~/.ssh
+            echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+            chmod 600 ~/.ssh/aur
+            
+            cat >> ~/.ssh/config << EOF
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+          EOF
+            
+            ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          else
+            echo "AUR SSH key not configured"
+            exit 0
+          fi
+
+      - name: Clone and update AUR package
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "Skipping AUR publish - no SSH key configured"
+            exit 0
+          fi
+          
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Clone AUR repository
+          git clone ssh://aur@aur.archlinux.org/${{ env.PACKAGE_NAME }}.git aur-repo || {
+            echo "AUR package doesn't exist yet. You need to create it first at:"
+            echo "https://aur.archlinux.org/pkgsubmit/"
+            exit 0
+          }
+          
+          cd aur-repo
+          
+          # Copy new PKGBUILD and .SRCINFO
+          cp ../artifacts/PKGBUILD .
+          cp ../artifacts/.SRCINFO .
+          
+          # Configure git
+          git config user.name "Kiokuu CI"
+          git config user.email "ci@kiokuu.com"
+          
+          # Commit and push
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to version ${VERSION}"
+          git push origin master
+
+  # ============================================================================
+  # CREATE REPOSITORY SETUP INSTRUCTIONS
+  # ============================================================================
+  create-repo-instructions:
+    name: Generate Repository Instructions
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Create installation instructions
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          cat > INSTALL_INSTRUCTIONS.md << 'EOF'
+          # Kiokuu Installation Instructions
+
+          ## Arch Linux (AUR)
+
+          Using yay:
+          ```bash
+          yay -S kiokuu
+          ```
+
+          Using paru:
+          ```bash
+          paru -S kiokuu
+          ```
+
+          Manual installation:
+          ```bash
+          git clone https://aur.archlinux.org/kiokuu.git
+          cd kiokuu
+          makepkg -si
+          ```
+
+          ## Fedora/RHEL (COPR)
+
+          Enable the COPR repository:
+          ```bash
+          sudo dnf copr enable kiokuu/kiokuu
+          sudo dnf install kiokuu
+          ```
+
+          Or download the RPM directly from the GitHub release.
+
+          ## Debian/Ubuntu (APT)
+
+          Add the repository:
+          ```bash
+          # Add GPG key
+          curl -fsSL https://kiokuu.app/apt/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/kiokuu.gpg
+
+          # Add repository
+          echo "deb [signed-by=/usr/share/keyrings/kiokuu.gpg] https://kiokuu.app/apt stable main" | \
+            sudo tee /etc/apt/sources.list.d/kiokuu.list
+
+          # Update and install
+          sudo apt update
+          sudo apt install kiokuu
+          ```
+
+          Or download the .deb directly from the GitHub release:
+          ```bash
+          wget https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu_VERSION_amd64.deb
+          sudo dpkg -i kiokuu_VERSION_amd64.deb
+          sudo apt-get install -f  # Install dependencies
+          ```
+
+          ## Flatpak
+
+          ```bash
+          flatpak install kiokuu-VERSION.flatpak
+          ```
+
+          ## AppImage
+
+          ```bash
+          wget https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-VERSION-x86_64.AppImage
+          chmod +x kiokuu-VERSION-x86_64.AppImage
+          ./kiokuu-VERSION-x86_64.AppImage
+          ```
+
+          ## Portable tarball
+
+          ```bash
+          wget https://github.com/Xumi-cc/Kiokuu/releases/latest/download/kiokuu-VERSION-linux-x64.tar.gz
+          tar xzf kiokuu-VERSION-linux-x64.tar.gz
+          cd kiokuu
+          ./kiokuu
+          ```
+          EOF
+          
+          echo "Installation instructions generated"
+
+      - name: Upload instructions
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-instructions
+          path: INSTALL_INSTRUCTIONS.md
+          retention-days: 90
 

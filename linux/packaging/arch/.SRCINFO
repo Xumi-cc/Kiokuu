@@ -1,0 +1,21 @@
+pkgbase = kiokuu
+	pkgdesc = A beautiful music streaming and management application
+	pkgver = 0.9.2
+	pkgrel = 1
+	url = https://github.com/Xumi-cc/Kiokuu
+	arch = x86_64
+	license = custom:proprietary
+	depends = gtk3
+	depends = mpv
+	depends = libsecret
+	depends = hicolor-icon-theme
+	optdepends = pulseaudio: PulseAudio support
+	optdepends = pipewire-pulse: PipeWire PulseAudio support
+	provides = kiokuu
+	conflicts = kiokuu-bin
+	conflicts = kiokuu-git
+	options = !strip
+	source = https://github.com/Xumi-cc/Kiokuu/releases/download/v0.9.2/kiokuu-0.9.2-linux-x64.tar.gz
+	sha256sums = SKIP
+
+pkgname = kiokuu

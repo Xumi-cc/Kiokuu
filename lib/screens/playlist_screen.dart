@@ -3116,6 +3116,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return Scaffold(
         key: const ValueKey('mobile_playlist_loading'),
         backgroundColor: Colors.black,
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: 2,
+          onTap: (index) => Navigator.pop(context),
+          backgroundColor: const Color(0xFF121212),
+          selectedItemColor: Colors.white,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_filled),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.library_music),
+              label: 'Library',
+            ),
+          ],
+        ),
         body: SafeArea(child: _buildPlaylistDetailSkeleton()),
       );
     }
@@ -3124,6 +3143,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return Scaffold(
         key: const ValueKey('mobile_playlist_not_found'),
         backgroundColor: Colors.black,
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: 2,
+          onTap: (index) => Navigator.pop(context),
+          backgroundColor: const Color(0xFF121212),
+          selectedItemColor: Colors.white,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_filled),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.library_music),
+              label: 'Library',
+            ),
+          ],
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -3149,6 +3187,26 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     return Scaffold(
       key: const ValueKey('mobile_playlist_scaffold'),
       backgroundColor: Colors.black,
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 2, // Library tab since we're viewing a playlist
+        onTap: (index) {
+          // Navigate back to home with selected tab
+          Navigator.pop(context);
+          // The home screen will handle the tab selection
+        },
+        backgroundColor: const Color(0xFF121212),
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.library_music),
+            label: 'Library',
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           // Base Background

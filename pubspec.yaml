@@ -56,6 +56,7 @@ dependencies:
 
   # UI utilities
   google_fonts: ^6.3.3
+  font_awesome_flutter: ^10.8.0
 
   # Background audio service
   audio_service: ^0.18.18
