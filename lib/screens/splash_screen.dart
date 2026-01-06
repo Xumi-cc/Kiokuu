@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -58,7 +59,9 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 1500));
 
     // On Windows, perform shader warmup first
-    if (Platform.isWindows && !ShaderWarmupService.instance.isWarmedUp) {
+    if (!kIsWeb &&
+        Platform.isWindows &&
+        !ShaderWarmupService.instance.isWarmedUp) {
       if (mounted) {
         setState(() {
           _isWarmingUpShaders = true;

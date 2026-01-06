@@ -1,8 +1,45 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
+import '../services/extension_runtime_service.dart';
+import '../models/extension_model.dart';
 import '../utils/snackbar_utils.dart';
+
+/// Represents a verified download source (like backend health check)
+class VerifiedSource {
+  final String name;
+  final String extensionId;
+  final SourceStatus status;
+  final String? downloadUrl;
+  final String? message;
+  final int? latencyMs;
+  // Audio metadata
+  final String? format;
+  final String? codec;
+  final int? bitDepth;
+  final int? sampleRate;
+  final String? quality;
+
+  const VerifiedSource({
+    required this.name,
+    required this.extensionId,
+    required this.status,
+    this.downloadUrl,
+    this.message,
+    this.latencyMs,
+    this.format,
+    this.codec,
+    this.bitDepth,
+    this.sampleRate,
+    this.quality,
+  });
+}
+
+enum SourceStatus { ok, failed, checking }
 
 /// A beautiful, modern upload sheet with Spotify search
 /// No more copying IDs - just search by song name!
@@ -26,6 +63,7 @@ class UploadSongSheet extends StatefulWidget {
 
 class _UploadSongSheetState extends State<UploadSongSheet> {
   final _api = ApiService();
+  final _extensionService = ExtensionRuntimeService.instance;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
 
@@ -39,6 +77,34 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
   double _uploadProgress = 0.0;
   String? _errorMessage;
   Timer? _debounceTimer;
+
+  // Extension mode - with source verification like backend
+  bool _useExtension = false;
+  bool _isDownloadingFromExtension = false;
+  double _downloadProgress = 0.0;
+  int _downloadedBytes = 0;
+  int _totalDownloadBytes = 0;
+
+  // Source verification (like backend health check)
+  bool _isVerifyingSources = false;
+  List<VerifiedSource> _verifiedSources = [];
+  VerifiedSource? _selectedSource;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  /// Get list of enabled download extensions
+  List<ExtensionMetadata> get _downloadExtensions {
+    return _extensionService.enabledExtensions
+        .where(
+          (e) =>
+              e.type == ExtensionType.downloader ||
+              e.type == ExtensionType.full,
+        )
+        .toList();
+  }
 
   @override
   void dispose() {
@@ -89,8 +155,119 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
       _searchResults = [];
       _searchController.clear();
       _errorMessage = null;
+      _verifiedSources = [];
+      _selectedSource = null;
+      _useExtension = false;
     });
     _searchFocusNode.unfocus();
+
+    // Start source verification if extensions are available
+    if (_downloadExtensions.isNotEmpty) {
+      _verifySources();
+    }
+  }
+
+  /// Verify which extension sources can download this track (like backend health check)
+  Future<void> _verifySources() async {
+    if (_selectedTrack == null) return;
+
+    final spotifyId = _selectedTrack!['id'] as String;
+    final extensions = _downloadExtensions;
+
+    if (extensions.isEmpty) return;
+
+    setState(() {
+      _isVerifyingSources = true;
+      _verifiedSources = extensions
+          .map(
+            (ext) => VerifiedSource(
+              name: ext.name,
+              extensionId: ext.id,
+              status: SourceStatus.checking,
+            ),
+          )
+          .toList();
+    });
+
+    // Verify each extension and update UI as they complete
+    int completedCount = 0;
+    for (final ext in extensions) {
+      // Run each verification without awaiting to allow parallel execution
+      _verifyExtension(ext, spotifyId).then((result) {
+        if (!mounted) return;
+
+        completedCount++;
+        setState(() {
+          // Update this specific source in the list
+          final index = _verifiedSources.indexWhere(
+            (s) => s.extensionId == ext.id,
+          );
+          if (index != -1) {
+            _verifiedSources[index] = result;
+          }
+
+          // Auto-select first working source if none selected
+          if (_selectedSource == null && result.status == SourceStatus.ok) {
+            _selectedSource = result;
+            _useExtension = true;
+          }
+
+          // Mark as done when all complete
+          if (completedCount >= extensions.length) {
+            _isVerifyingSources = false;
+          }
+        });
+      });
+    }
+  }
+
+  /// Verify a single extension
+  Future<VerifiedSource> _verifyExtension(
+    ExtensionMetadata ext,
+    String spotifyId,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      final result = await _extensionService.getDownloadUrl(ext.id, spotifyId);
+      stopwatch.stop();
+
+      if (result.success &&
+          result.data != null &&
+          result.data!.url.isNotEmpty) {
+        final info = result.data!;
+        return VerifiedSource(
+          name: ext.name,
+          extensionId: ext.id,
+          status: SourceStatus.ok,
+          downloadUrl: info.url,
+          message: 'Ready to download',
+          latencyMs: stopwatch.elapsedMilliseconds,
+          format: info.format,
+          codec: info.codec,
+          bitDepth: info.bitDepth,
+          sampleRate: info.sampleRate,
+          quality: info.quality,
+        );
+      } else {
+        return VerifiedSource(
+          name: ext.name,
+          extensionId: ext.id,
+          status: SourceStatus.failed,
+          message: result.error ?? 'No download URL found',
+          latencyMs: stopwatch.elapsedMilliseconds,
+        );
+      }
+    } catch (e) {
+      stopwatch.stop();
+      return VerifiedSource(
+        name: ext.name,
+        extensionId: ext.id,
+        status: SourceStatus.failed,
+        message: e.toString(),
+        latencyMs: stopwatch.elapsedMilliseconds,
+      );
+    }
   }
 
   Future<void> _pickFile() async {
@@ -118,6 +295,83 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
     }
   }
 
+  /// Download audio file using the selected verified source
+  Future<void> _downloadWithExtension() async {
+    if (_selectedTrack == null ||
+        _selectedSource == null ||
+        _selectedSource!.downloadUrl == null)
+      return;
+
+    setState(() {
+      _isDownloadingFromExtension = true;
+      _downloadProgress = 0.0;
+      _downloadedBytes = 0;
+      _totalDownloadBytes = 0;
+      _errorMessage = null;
+    });
+
+    try {
+      final spotifyId = _selectedTrack!['id'] as String;
+      final downloadUrl = _selectedSource!.downloadUrl!;
+
+      // Download to temp file with progress tracking
+      final tempDir = await getTemporaryDirectory();
+      final tempPath = '${tempDir.path}/$spotifyId.flac';
+
+      // Use streaming request for progress tracking
+      final request = http.Request('GET', Uri.parse(downloadUrl));
+      final streamedResponse = await http.Client().send(request);
+
+      if (streamedResponse.statusCode != 200) {
+        throw Exception('Download failed: HTTP ${streamedResponse.statusCode}');
+      }
+
+      final totalBytes = streamedResponse.contentLength ?? 0;
+      setState(() => _totalDownloadBytes = totalBytes);
+
+      final file = File(tempPath);
+      final sink = file.openWrite();
+      int receivedBytes = 0;
+
+      await for (final chunk in streamedResponse.stream) {
+        sink.add(chunk);
+        receivedBytes += chunk.length;
+
+        if (mounted && totalBytes > 0) {
+          setState(() {
+            _downloadedBytes = receivedBytes;
+            _downloadProgress = receivedBytes / totalBytes;
+          });
+        }
+      }
+
+      await sink.close();
+
+      // Create PlatformFile for consistency
+      _pickedFile = PlatformFile(
+        name: '$spotifyId.flac',
+        path: tempPath,
+        size: receivedBytes,
+      );
+
+      setState(() {
+        _isDownloadingFromExtension = false;
+        _downloadProgress = 1.0;
+      });
+
+      // Automatically proceed to upload
+      await _upload();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloadingFromExtension = false;
+          _downloadProgress = 0.0;
+          _errorMessage = 'Extension download failed: $e';
+        });
+      }
+    }
+  }
+
   Future<void> _upload() async {
     if (_selectedTrack == null || _pickedFile == null) return;
 
@@ -140,6 +394,14 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
 
       if (mounted) {
         if (success) {
+          // Clean up temp file if it was from extension
+          if (_pickedFile!.path!.contains('cache') ||
+              _pickedFile!.path!.contains('temp')) {
+            try {
+              await File(_pickedFile!.path!).delete();
+            } catch (_) {}
+          }
+
           Navigator.pop(context);
           widget.onSuccess?.call();
           AppSnackbar.show(context, message: message, icon: Icons.check_circle);
@@ -597,20 +859,44 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
 
   Widget _buildFilePicker() {
     final hasFile = _pickedFile != null;
+    final hasExtension =
+        _downloadExtensions.isNotEmpty && _selectedTrack != null;
+
+    // If extension is available and no file picked yet, show extension option
+    if (hasExtension && !hasFile && _useExtension) {
+      return _buildExtensionDownloadOption();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          hasFile
-              ? 'Step 2: File selected ✓'
-              : 'Step 2: Select your audio file',
-          style: TextStyle(
-            color: hasFile ? const Color(0xFF1DB954) : Colors.grey[400],
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                hasFile
+                    ? 'Step 2: File selected ✓'
+                    : 'Step 2: Select your audio file',
+                style: TextStyle(
+                  color: hasFile ? const Color(0xFF1DB954) : Colors.grey[400],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            // Toggle to extension mode if available
+            if (_downloadExtensions.isNotEmpty && !hasFile)
+              TextButton.icon(
+                onPressed: () => setState(() => _useExtension = true),
+                icon: const Icon(Icons.extension, size: 14),
+                label: const Text('Auto', style: TextStyle(fontSize: 11)),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF4F6BF6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         InkWell(
@@ -717,10 +1003,216 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
     );
   }
 
+  Widget _buildExtensionDownloadOption() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _isVerifyingSources
+                    ? 'Step 2: Verifying sources...'
+                    : _isDownloadingFromExtension
+                    ? 'Step 2: Auto-downloading...'
+                    : 'Step 2: Choose a source',
+                style: TextStyle(
+                  color: const Color(0xFF4F6BF6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            // Toggle to manual mode
+            TextButton.icon(
+              onPressed: _isDownloadingFromExtension
+                  ? null
+                  : () => setState(() => _useExtension = false),
+              icon: const Icon(Icons.folder_open, size: 14),
+              label: const Text('Manual', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[400],
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildSourceList(),
+      ],
+    );
+  }
+
+  Widget _buildSourceList() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: _verifiedSources.map((source) {
+          final isSelected = _selectedSource?.extensionId == source.extensionId;
+          final isWorking = source.status == SourceStatus.ok;
+          final isChecking = source.status == SourceStatus.checking;
+
+          return InkWell(
+            onTap: (isWorking && !_isDownloadingFromExtension)
+                ? () => setState(() => _selectedSource = source)
+                : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: source == _verifiedSources.last
+                      ? BorderSide.none
+                      : BorderSide(color: Colors.white.withOpacity(0.05)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Status Icon
+                  if (isChecking)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: const Color(0xFF4F6BF6),
+                      ),
+                    )
+                  else
+                    Icon(
+                      isWorking ? Icons.check_circle : Icons.error_outline,
+                      size: 20,
+                      color: isWorking ? Colors.green : Colors.redAccent,
+                    ),
+                  const SizedBox(width: 12),
+                  // Name and detail
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          source.name,
+                          style: TextStyle(
+                            color: isWorking ? Colors.white : Colors.white70,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        if (source.message != null)
+                          Text(
+                            source.message!,
+                            style: TextStyle(
+                              color: isWorking
+                                  ? Colors.white54
+                                  : Colors.redAccent.withOpacity(0.7),
+                              fontSize: 11,
+                            ),
+                          ),
+                        // Technical details
+                        if (isWorking &&
+                            (source.format != null || source.bitDepth != null))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                if (source.codec != null ||
+                                    source.format != null)
+                                  _buildMetaBadge(
+                                    source.codec?.toUpperCase() ??
+                                        source.format
+                                            ?.replaceAll('audio/', '')
+                                            .toUpperCase() ??
+                                        'FLAC',
+                                  ),
+                                if (source.bitDepth != null) ...[
+                                  const SizedBox(width: 6),
+                                  _buildMetaBadge('${source.bitDepth}bit'),
+                                ],
+                                if (source.sampleRate != null) ...[
+                                  const SizedBox(width: 6),
+                                  _buildMetaBadge(
+                                    '${(source.sampleRate! / 1000).toStringAsFixed(1)}kHz',
+                                  ),
+                                ],
+                                if (source.quality != null) ...[
+                                  const SizedBox(width: 6),
+                                  _buildMetaBadge(
+                                    source.quality!,
+                                    isHighlight: true,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Latency
+                  if (source.latencyMs != null)
+                    Text(
+                      '${source.latencyMs}ms',
+                      style: const TextStyle(
+                        color: Colors.white30,
+                        fontSize: 11,
+                      ),
+                    ),
+                  const SizedBox(width: 12),
+                  // Radio button for selection
+                  if (isWorking)
+                    Icon(
+                      isSelected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      size: 18,
+                      color: isSelected
+                          ? const Color(0xFF4F6BF6)
+                          : Colors.white38,
+                    ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Widget _buildMetaBadge(String text, {bool isHighlight = false}) {
+    final highlightColor = const Color(0xFF00E676); // Bright green
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? highlightColor.withOpacity(0.15)
+            : Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isHighlight
+              ? highlightColor.withOpacity(0.5)
+              : Colors.white.withOpacity(0.15),
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: isHighlight ? highlightColor : Colors.white70,
+          fontSize: 9,
+          fontWeight: isHighlight ? FontWeight.w600 : FontWeight.w500,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
   }
 
   Widget _buildUploadProgress() {
@@ -774,9 +1266,105 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
   }
 
   Widget _buildUploadButton() {
+    // In extension mode with track selected but no file yet
+    final canAutoDownload =
+        _selectedTrack != null &&
+        _selectedSource != null &&
+        _useExtension &&
+        _pickedFile == null &&
+        !_isUploading &&
+        !_isDownloadingFromExtension;
+
+    // Manual mode with file selected
     final canUpload =
         _selectedTrack != null && _pickedFile != null && !_isUploading;
 
+    final isProcessing = _isUploading || _isDownloadingFromExtension;
+
+    // Extension auto-download mode
+    if (canAutoDownload) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _downloadWithExtension,
+          icon: const Icon(Icons.download, size: 20),
+          label: const Text(
+            'Download & Upload',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF4F6BF6),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+            elevation: 0,
+          ),
+        ),
+      );
+    }
+
+    // Processing state
+    if (isProcessing) {
+      final isDownloading = _isDownloadingFromExtension;
+      final progress = isDownloading ? _downloadProgress : _uploadProgress;
+      final percent = (progress * 100).toInt();
+
+      String progressText;
+      if (isDownloading) {
+        if (_totalDownloadBytes > 0) {
+          final downloadedMB = (_downloadedBytes / 1024 / 1024).toStringAsFixed(
+            1,
+          );
+          final totalMB = (_totalDownloadBytes / 1024 / 1024).toStringAsFixed(
+            1,
+          );
+          progressText =
+              'Downloading... $percent% ($downloadedMB / $totalMB MB)';
+        } else {
+          progressText = 'Downloading...';
+        }
+      } else {
+        progressText = 'Uploading... $percent%';
+      }
+
+      return SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            // Progress bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: LinearProgressIndicator(
+                value: progress > 0 ? progress : null,
+                backgroundColor: Colors.grey[800],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  isDownloading
+                      ? const Color(0xFF4F6BF6)
+                      : const Color(0xFF4F6BF6),
+                ),
+                minHeight: 52,
+              ),
+            ),
+            // Text overlay
+            Transform.translate(
+              offset: const Offset(0, -36),
+              child: Text(
+                progressText,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Manual upload mode
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -791,9 +1379,9 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
           ),
           elevation: 0,
         ),
-        child: Text(
-          _isUploading ? 'Uploading...' : 'Upload Song',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        child: const Text(
+          'Upload Song',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );

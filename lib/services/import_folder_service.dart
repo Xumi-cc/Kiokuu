@@ -1,11 +1,15 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service to manage the "KioKuu" import folder that appears in system file managers.
-/// This folder is mounted/created automatically on app startup.
+/// Service to manage the import folder for auto-importing music files.
+///
+/// On Android: Uses SAF (Storage Access Framework) to let user pick any folder.
+/// This is Google Play compliant and doesn't require MANAGE_EXTERNAL_STORAGE.
+///
+/// On Desktop: Creates a ~/KioKuu folder with system bookmark integration.
 class ImportFolderService {
   static ImportFolderService? _instance;
   static ImportFolderService get instance =>
@@ -15,46 +19,74 @@ class ImportFolderService {
 
   String? _importFolderPath;
   static const String _customFolderKey = 'custom_import_folder_path';
+  static const String _hasPromptedFolderKey = 'has_prompted_import_folder';
 
   /// Get the import folder path
   String? get importFolderPath => _importFolderPath;
 
+  /// Check if we have a valid import folder configured
+  bool get hasImportFolder =>
+      _importFolderPath != null && _importFolderPath!.isNotEmpty;
+
+  /// Check if user has been prompted to select a folder (Android only)
+  Future<bool> hasPromptedForFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hasPromptedFolderKey) ?? false;
+  }
+
+  /// Mark that user has been prompted for folder selection
+  Future<void> setPromptedForFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hasPromptedFolderKey, true);
+  }
+
   /// Initialize the import folder - call this on app startup
-  /// Note: Does NOT request permissions - that's handled by PermissionScreen
+  /// On Android, this will use the user-selected folder via SAF
+  /// On Desktop, this will create/use the default ~/KioKuu folder
   Future<void> initialize() async {
     if (kIsWeb) return; // Not supported on web
 
     try {
-      // Check if user has set a custom folder
+      // Check if user has set a custom folder (via SAF or manual selection)
       final prefs = await SharedPreferences.getInstance();
       final customPath = prefs.getString(_customFolderKey);
 
       if (customPath != null && customPath.isNotEmpty) {
-        // Use custom folder if it exists
+        // Verify the folder still exists and is accessible
         final customDir = Directory(customPath);
         if (await customDir.exists()) {
           _importFolderPath = customPath;
-          debugPrint('📁 Using custom import folder: $customPath');
+          debugPrint('📁 Using saved import folder: $customPath');
           return;
         } else {
-          // Custom folder no longer exists, clear it
+          // Folder no longer exists or accessible, clear it
           await prefs.remove(_customFolderKey);
-          debugPrint('⚠️ Custom folder no longer exists, reverting to default');
+          debugPrint('⚠️ Saved folder no longer accessible, cleared');
         }
       }
 
-      // On Android, just check if we have permission (don't request here)
+      // On Android, we need user to pick a folder via SAF
+      // Don't auto-create folder - wait for user selection
       if (Platform.isAndroid) {
-        final hasPermission = await _hasStoragePermission();
-        if (!hasPermission) {
-          debugPrint(
-            '⚠️ Storage permission not granted - using app-specific storage',
-          );
+        debugPrint(
+          '📁 Android: Waiting for user to select import folder via SAF',
+        );
+        // Use app-specific storage as a fallback until user picks a folder
+        final directory = await getExternalStorageDirectory();
+        if (directory != null) {
+          final fallbackPath = '${directory.path}/Import';
+          final fallbackDir = Directory(fallbackPath);
+          if (!await fallbackDir.exists()) {
+            await fallbackDir.create(recursive: true);
+          }
+          _importFolderPath = fallbackPath;
+          debugPrint('📁 Using app-specific fallback: $fallbackPath');
         }
+        return;
       }
 
-      // Create the default import folder
-      _importFolderPath = await _createImportFolder();
+      // On Desktop, create the default import folder
+      _importFolderPath = await _createDesktopImportFolder();
 
       if (_importFolderPath != null) {
         // Add to system bookmarks based on platform
@@ -63,6 +95,29 @@ class ImportFolderService {
       }
     } catch (e) {
       debugPrint('⚠️ Failed to initialize import folder: $e');
+    }
+  }
+
+  /// Open folder picker using SAF (Android) or native picker (Desktop)
+  /// Returns true if folder was successfully selected
+  Future<bool> pickImportFolder() async {
+    try {
+      // Use file_picker to select a directory
+      // On Android, this uses SAF and grants persistent URI permissions
+      final result = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Select Import Folder',
+        lockParentWindow: true,
+      );
+
+      if (result != null && result.isNotEmpty) {
+        return await setCustomImportFolder(result);
+      }
+
+      debugPrint('📁 Folder selection cancelled');
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ Failed to pick folder: $e');
+      return false;
     }
   }
 
@@ -79,9 +134,12 @@ class ImportFolderService {
       await prefs.setString(_customFolderKey, folderPath);
       _importFolderPath = folderPath;
 
-      // Add to system bookmarks
-      await _addToSystemBookmarks(folderPath);
-      debugPrint('✅ Custom import folder set: $folderPath');
+      // Add to system bookmarks (Desktop only)
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        await _addToSystemBookmarks(folderPath);
+      }
+
+      debugPrint('✅ Import folder set: $folderPath');
       return true;
     } catch (e) {
       debugPrint('⚠️ Failed to set custom folder: $e');
@@ -94,8 +152,9 @@ class ImportFolderService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_customFolderKey);
+      _importFolderPath = null;
 
-      // Reinitialize with default folder
+      // Reinitialize
       await initialize();
       debugPrint('✅ Reverted to default import folder');
     } catch (e) {
@@ -110,15 +169,8 @@ class ImportFolderService {
     return customPath != null && customPath.isNotEmpty;
   }
 
-  /// Check if storage permission is already granted (no request)
-  Future<bool> _hasStoragePermission() async {
-    if (await Permission.manageExternalStorage.isGranted) return true;
-    if (await Permission.storage.isGranted) return true;
-    return false;
-  }
-
-  /// Create the import folder in the appropriate location
-  Future<String?> _createImportFolder() async {
+  /// Create the import folder for Desktop platforms
+  Future<String?> _createDesktopImportFolder() async {
     String folderPath;
 
     if (Platform.isLinux || Platform.isMacOS) {
@@ -131,27 +183,8 @@ class ImportFolderService {
       final userProfile = Platform.environment['USERPROFILE'];
       if (userProfile == null) return null;
       folderPath = '$userProfile\\KioKuu';
-    } else if (Platform.isAndroid) {
-      // Android: Create in user-accessible external storage
-      // Try /storage/emulated/0/KioKuu first (visible in file managers)
-      try {
-        const externalPath = '/storage/emulated/0';
-        final externalDir = Directory(externalPath);
-        if (await externalDir.exists()) {
-          folderPath = '$externalPath/KioKuu';
-        } else {
-          // Fallback to Download folder
-          folderPath = '/storage/emulated/0/Download/KioKuu';
-        }
-      } catch (e) {
-        // Last resort: use app-specific external directory
-        final directory = await getExternalStorageDirectory();
-        if (directory == null) return null;
-        folderPath = '${directory.path}/Import';
-        debugPrint('⚠️ Using app-specific storage: $folderPath');
-      }
     } else {
-      // iOS: Use app documents directory (limited due to sandboxing)
+      // Unsupported platform, use app documents
       final directory = await getApplicationDocumentsDirectory();
       folderPath = '${directory.path}/Import';
     }
@@ -163,26 +196,15 @@ class ImportFolderService {
         await folder.create(recursive: true);
         debugPrint('📁 Created import folder: $folderPath');
       } catch (e) {
-        debugPrint('⚠️ Failed to create folder at $folderPath: $e');
-        // On Android, permission might be denied - try app-specific storage
-        if (Platform.isAndroid) {
-          final directory = await getExternalStorageDirectory();
-          if (directory != null) {
-            folderPath = '${directory.path}/Import';
-            final appFolder = Directory(folderPath);
-            if (!await appFolder.exists()) {
-              await appFolder.create(recursive: true);
-            }
-            debugPrint('📁 Fallback to app storage: $folderPath');
-          }
-        }
+        debugPrint('⚠️ Failed to create folder: $e');
+        return null;
       }
     }
 
     return folderPath;
   }
 
-  /// Add the import folder to system bookmarks/favorites
+  /// Add the import folder to system bookmarks/favorites (Desktop only)
   Future<void> _addToSystemBookmarks(String folderPath) async {
     if (Platform.isLinux) {
       await _addToLinuxBookmarks(folderPath);
@@ -191,8 +213,6 @@ class ImportFolderService {
     } else if (Platform.isWindows) {
       await _addToWindowsQuickAccess(folderPath);
     }
-    // Android & iOS: Native file managers handle this differently
-    // Android DocumentsProvider will be added via native code
   }
 
   /// Linux: Add to GTK3 bookmarks (shows in Nautilus, Thunar, etc.)

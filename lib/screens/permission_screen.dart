@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -15,6 +16,9 @@ class PermissionScreen extends StatefulWidget {
 
   /// Check if we need to show the permission screen
   static Future<bool> needsPermissions() async {
+    // Web doesn't need mobile permissions
+    if (kIsWeb) return false;
+
     if (!Platform.isAndroid && !Platform.isIOS) {
       return false; // Desktop platforms don't need this
     }
@@ -26,11 +30,18 @@ class PermissionScreen extends StatefulWidget {
     return !hasNotification || !hasStorage;
   }
 
+  /// Check if we have media audio permissions (for MediaStore access)
+  /// Note: We use SAF (Storage Access Framework) for folder access,
+  /// which doesn't require MANAGE_EXTERNAL_STORAGE
   static Future<bool> _hasStoragePermission() async {
+    if (kIsWeb) return true; // Web handles storage differently
+
     if (Platform.isAndroid) {
-      // Check for either storage or manage external storage
-      if (await Permission.manageExternalStorage.isGranted) return true;
+      // For Android 13+, check audio permission (READ_MEDIA_AUDIO)
+      // For older Android, check storage permission
+      if (await Permission.audio.isGranted) return true;
       if (await Permission.storage.isGranted) return true;
+      // SAF folder access doesn't require permissions, so this is optional
       return false;
     }
     return true; // iOS handles storage differently
@@ -72,22 +83,27 @@ class _PermissionScreenState extends State<PermissionScreen> {
   Future<void> _requestStoragePermission() async {
     setState(() => _isLoading = true);
 
-    // Try storage first (shows dialog on older Android)
-    var status = await Permission.storage.request();
-    if (status.isGranted) {
-      setState(() {
-        _storageGranted = true;
-        _isLoading = false;
-      });
-      return;
-    }
+    if (!kIsWeb && Platform.isAndroid) {
+      // For Android 13+ (API 33+), request audio permission (READ_MEDIA_AUDIO)
+      var status = await Permission.audio.request();
+      if (status.isGranted) {
+        setState(() {
+          _storageGranted = true;
+          _isLoading = false;
+        });
+        return;
+      }
 
-    // For Android 11+, try MANAGE_EXTERNAL_STORAGE
-    // This opens system settings
-    if (Platform.isAndroid) {
-      status = await Permission.manageExternalStorage.request();
+      // For older Android (API < 33), request storage permission
+      status = await Permission.storage.request();
       setState(() {
         _storageGranted = status.isGranted;
+        _isLoading = false;
+      });
+    } else {
+      // Non-Android platforms
+      setState(() {
+        _storageGranted = true;
         _isLoading = false;
       });
     }

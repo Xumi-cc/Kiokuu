@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -216,7 +217,8 @@ class _DesktopPlayerContentState extends State<DesktopPlayerContent> {
         return GestureDetector(
           // Enable window dragging on desktop
           onPanStart: (_) {
-            if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+            if (!kIsWeb &&
+                (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
               windowManager.startDragging();
             }
           },

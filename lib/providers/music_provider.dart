@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -360,6 +361,13 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> _fetchDeviceName() async {
+    // Skip on web - Platform APIs not available
+    if (kIsWeb) {
+      _deviceName = 'Web Browser';
+      notifyListeners();
+      return;
+    }
+
     // Initial fetch of host/model name as fallback
     final deviceInfo = DeviceInfoPlugin();
     try {

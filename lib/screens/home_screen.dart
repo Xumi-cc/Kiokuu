@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -1497,7 +1498,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final isLargeScreen = MediaQuery.of(context).size.width > 800;
     final isDesktop =
-        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
     Widget mainContent = Stack(
       children: [

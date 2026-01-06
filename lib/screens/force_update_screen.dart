@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,7 +16,7 @@ class ForceUpdateScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDesktop =
-        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
     final content = Stack(
       children: [

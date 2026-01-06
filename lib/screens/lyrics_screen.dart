@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_lyric/flutter_lyric.dart';
@@ -33,7 +34,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
   void dispose() {
     _lyricController?.dispose();
     // Restore window state when leaving lyrics screen
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb &&
+        (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       windowManager.isFullScreen().then((isFullScreen) {
         if (isFullScreen) {
           windowManager.setFullScreen(false);
@@ -50,7 +52,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
   }
 
   Future<void> _enterFullscreen() async {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb &&
+        (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       // Ensure window manager is ready
       await windowManager.ensureInitialized();
       // Remove max size limit to allow fullscreen
@@ -64,7 +67,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
   }
 
   Future<void> _exitLyrics() async {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb &&
+        (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       await windowManager.setFullScreen(false);
       await windowManager.setMaximumSize(const Size(1280, 720));
       await Future.delayed(const Duration(milliseconds: 100));

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 /// Service to pre-compile shaders on platforms where they cause jank.
@@ -14,7 +15,7 @@ class ShaderWarmupService {
   bool get isWarmedUp => _isWarmedUp;
 
   /// Check if shader warmup is needed for the current platform
-  static bool get needsWarmup => Platform.isWindows;
+  static bool get needsWarmup => !kIsWeb && Platform.isWindows;
 
   /// Warm up common shaders by rendering them off-screen.
   /// This prevents jank when these effects are first used.

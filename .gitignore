@@ -49,3 +49,4 @@ app.*.map.json
 release-keystore.jks
 .github/CICD_GUIDE.md
 nginx/music-cloud.conf
+docs/extensions

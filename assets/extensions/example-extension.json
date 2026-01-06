@@ -1,0 +1,37 @@
+{
+    "_comment_1": "=== KIOKUU EXTENSION TEMPLATE ===",
+    "_comment_2": "This is a sample extension to help you get started.",
+    "_comment_3": "Copy this file and modify for your own use.",
+    "_comment_meta": "--- METADATA (Required) ---",
+    "id": "example-extension",
+    "name": "Example Extension",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "description": "A sample extension showing the basic structure",
+    "_comment_type": "Type can be: 'downloader', 'scraper', or 'full'",
+    "type": "downloader",
+    "_comment_domains": "List of domains this extension handles",
+    "domains": [
+        "example.com",
+        "api.example.com"
+    ],
+    "_comment_update": "Optional: URL where the latest version of this JSON can be fetched",
+    "updateUrl": "https://example.com/extensions/example.json",
+    "_comment_download": "--- DOWNLOAD CONFIG ---",
+    "_comment_download2": "Defines how to fetch the download URL for a track",
+    "download": {
+        "_comment_url": "Use {id} as placeholder for the track ID",
+        "url": "https://api.example.com/download/{id}",
+        "_comment_method": "HTTP method: GET or POST",
+        "method": "GET",
+        "_comment_headers": "Optional headers to send with the request",
+        "headers": {
+            "User-Agent": "KioKuu/1.0",
+            "Accept": "application/json"
+        },
+        "_comment_response": "Response type: 'json' or 'html'",
+        "responseType": "json",
+        "_comment_path": "JSON path to extract the download URL (dot notation)",
+        "urlPath": "data.download_url"
+    }
+}

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -72,11 +73,12 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
   @override
   Widget build(BuildContext context) {
     // Only show custom title bar on desktop
-    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+    if (kIsWeb ||
+        (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux)) {
       return widget.child ?? const SizedBox.shrink();
     }
 
-    final isMacOS = Platform.isMacOS;
+    final isMacOS = !kIsWeb && Platform.isMacOS;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -129,6 +131,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
             fontSize: 13,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.3,
+            decoration: TextDecoration.none,
           ),
         ),
       ],
@@ -222,7 +225,8 @@ class TitleBarScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // On mobile, just return the body
-    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+    if (kIsWeb ||
+        (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux)) {
       return body;
     }
 

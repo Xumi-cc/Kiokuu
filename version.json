@@ -1,6 +1,6 @@
 {
-    "latest_version": "0.9.1",
-    "minimum_version": "0.9.1",
+    "latest_version": "0.9.2",
+    "minimum_version": "0.9.2",
     "release_notes": "Initial release of Kiokuu - Your music, everywhere.",
     "force_update_message": "This update contains critical security fixes. Please update to continue using Kiokuu.",
     "download_urls": {

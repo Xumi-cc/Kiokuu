@@ -1,0 +1,79 @@
+{
+    "id": "extension-template",
+    "name": "KioKuu Extension Template",
+    "description": "Comprehensive template for creating KioKuu extensions. Supports scraping, search, and complex multi-step downloads (resolution, manifests, polling).",
+    "version": "2.0.0",
+    "author": "KioKuu Team",
+    "type": "full",
+    "domains": [
+        "example.com"
+    ],
+    "headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/html"
+    },
+    "scrape": {
+        "title": {
+            "selector": "meta[property='og:title']",
+            "attr": "content"
+        },
+        "artist": {
+            "selector": "meta[property='og:description']",
+            "attr": "content",
+            "regex": "by (.+?)$",
+            "regexGroup": 1
+        },
+        "album": {
+            "selector": ".album-name"
+        },
+        "cover": {
+            "selector": "meta[property='og:image']",
+            "attr": "content"
+        },
+        "duration": {
+            "selector": "meta[itemprop='duration']",
+            "attr": "content"
+        }
+    },
+    "search": {
+        "url": "https://api.example.com/search?q={query}&page={page}&limit=20",
+        "responseType": "json",
+        "resultsPath": "data.tracks",
+        "mapping": {
+            "id": "id",
+            "title": "title",
+            "artist": "artist.name",
+            "album": "album.title",
+            "cover": "album.cover",
+            "duration": "duration"
+        }
+    },
+    "download": {
+        "// Note": "Resolution step converts the input ID (usually Spotify) to a service-specific ID",
+        "resolver": {
+            "url": "https://api.song.link/v1-alpha.1/links?id={id}&platform=spotify",
+            "responseType": "json",
+            "resultPath": "linksByPlatform.example.url",
+            "regex": "track/(\\d+)",
+            "regexGroup": 1
+        },
+        "// Note 2": "Primary URL template for the download/stream link",
+        "url": "https://api.example.com/stream/{id}",
+        "responseType": "json",
+        "urlPath": "url",
+        "// Note 3": "Mirror support for high reliability",
+        "mirrorListUrl": "https://example.com/mirrors.json",
+        "mirrorPath": "active_domains",
+        "// Note 4": "Manifest decoding for Base64 encoded responses (e.g. Tidal)",
+        "manifestPath": "data.manifest",
+        "manifestUrlPath": "urls.0",
+        "// Note 5": "Asynchronous polling for background tasks (e.g. Amazon Music)",
+        "isPolling": true,
+        "pollUrl": "https://api.example.com/status/{id}",
+        "pollStatusPath": "status",
+        "pollStatusValue": "done",
+        "pollResultPath": "download_url",
+        "pollInterval": 5000,
+        "maxPollAttempts": 60
+    }
+}

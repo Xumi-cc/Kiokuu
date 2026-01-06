@@ -27,6 +27,11 @@ class OfflineStorageService {
 
   /// Get the base offline directory
   static Future<String> getOfflineDir() async {
+    // Web doesn't support offline storage
+    if (kIsWeb) {
+      throw UnsupportedError('Offline storage not supported on web');
+    }
+
     if (Platform.isAndroid || Platform.isIOS) {
       final home =
           Platform.environment['EXTERNAL_STORAGE'] ?? '/storage/emulated/0';
@@ -61,6 +66,12 @@ class OfflineStorageService {
   /// Load offline songs metadata from disk
   Future<void> load() async {
     if (_isLoaded) return;
+
+    // Web doesn't support offline storage
+    if (kIsWeb) {
+      _isLoaded = true;
+      return;
+    }
 
     try {
       final path = await _metadataPath;

@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +18,7 @@ import 'services/api_service.dart';
 import 'services/discord_rpc_service.dart';
 import 'services/import_folder_service.dart';
 import 'services/extension_manager_service.dart';
+import 'services/extension_runtime_service.dart';
 import 'utils/snackbar_utils.dart';
 
 // Global navigator key for navigation from anywhere
@@ -47,8 +49,8 @@ void main() async {
   // Initialize MediaKit
   MediaKit.ensureInitialized();
 
-  // Initialize window manager for desktop platforms
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+  // Initialize window manager for desktop platforms (not on web)
+  if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
     await windowManager.ensureInitialized();
 
     const windowOptions = WindowOptions(
@@ -73,6 +75,9 @@ void main() async {
 
   // Initialize extension manager (checks for installed AI extensions)
   await ExtensionManagerService.instance.initialize();
+
+  // Initialize extension runtime service (loads user extensions and their enabled states)
+  await ExtensionRuntimeService.instance.initialize();
 
   // Initialize Discord Rich Presence (restores enabled state from preferences)
   await DiscordRpcService.instance.initialize();

@@ -36,6 +36,7 @@ class StorageCategory {
 
   /// Returns a shortened path for display (replaces home dir with ~)
   String get displayPath {
+    if (kIsWeb) return path; // Web doesn't use Platform.environment
     final home = Platform.environment['HOME'] ?? '';
     if (home.isNotEmpty && path.startsWith(home)) {
       return path.replaceFirst(home, '~');

@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../services/api_service.dart';
@@ -21,6 +24,8 @@ import '../utils/snackbar_utils.dart';
 import '../widgets/ai_match_review_sheet.dart';
 import '../widgets/custom_title_bar.dart';
 import '../config/app_config.dart';
+import '../services/extension_runtime_service.dart';
+import '../models/extension_model.dart';
 import 'auth_screen.dart';
 
 // --- Models ---
@@ -30,6 +35,7 @@ enum SettingsCategory {
   usage,
   storage,
   connections,
+  extensions,
   autoImport,
   pendingReviews,
   logs,
@@ -50,6 +56,8 @@ extension SettingsCategoryExtension on SettingsCategory {
         return 'Connections';
       case SettingsCategory.account:
         return 'Account';
+      case SettingsCategory.extensions:
+        return 'Extensions';
       case SettingsCategory.autoImport:
         return 'Auto Import';
       case SettingsCategory.pendingReviews:
@@ -73,6 +81,8 @@ extension SettingsCategoryExtension on SettingsCategory {
         return Icons.link;
       case SettingsCategory.account:
         return Icons.person_outline;
+      case SettingsCategory.extensions:
+        return Icons.extension;
       case SettingsCategory.autoImport:
         return Icons.cloud_upload_outlined;
       case SettingsCategory.pendingReviews:
@@ -149,24 +159,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Expanded(
           child: ListView(
             padding: EdgeInsets.zero,
-            children: SettingsCategory.values.map((category) {
-              return ListTile(
-                leading: Icon(category.icon, color: Colors.grey[400]),
-                title: Text(
-                  category.label,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => _MobileDetailScreen(category: category),
+            children: SettingsCategory.values
+                .where((c) => c != SettingsCategory.subscription)
+                .map((category) {
+                  return ListTile(
+                    leading: Icon(category.icon, color: Colors.grey[400]),
+                    title: Text(
+                      category.label,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey,
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              _MobileDetailScreen(category: category),
+                        ),
+                      );
+                    },
                   );
-                },
-              );
-            }).toList(),
+                })
+                .toList(),
           ),
         ),
 
@@ -225,53 +242,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  children: SettingsCategory.values.map((category) {
-                    final isSelected = category == _selectedCategory;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        color: isSelected
-                            ? Colors.white.withOpacity(0.1)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(6),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: () =>
-                              setState(() => _selectedCategory = category),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  category.icon,
-                                  size: 18,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.grey[500],
+                  children: SettingsCategory.values
+                      .where((c) => c != SettingsCategory.subscription)
+                      .map((category) {
+                        final isSelected = category == _selectedCategory;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Material(
+                            color: isSelected
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () =>
+                                  setState(() => _selectedCategory = category),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
                                 ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  category.label,
-                                  style: GoogleFonts.inter(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.grey[400],
-                                    fontSize: 14,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      category.icon,
+                                      size: 18,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey[500],
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      category.label,
+                                      style: GoogleFonts.inter(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.grey[400],
+                                        fontSize: 14,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                        );
+                      })
+                      .toList(),
                 ),
               ),
 
@@ -339,6 +359,9 @@ class _SettingsContentState extends State<_SettingsContent> {
   // Track downloading state per extension
   final Map<String, bool> _isDownloading = {};
   final Map<String, double> _downloadProgress = {};
+  // Extension updates
+  Map<String, String> _availableUpdates = {};
+  bool _isCheckingUpdates = false;
 
   // Subscription state
   Map<String, dynamic>? _subscription;
@@ -365,6 +388,9 @@ class _SettingsContentState extends State<_SettingsContent> {
       _refreshState();
       if (widget.category == SettingsCategory.subscription) {
         _loadSubscription();
+      }
+      if (widget.category == SettingsCategory.extensions) {
+        _checkForExtensionUpdates(showSnackbar: false);
       }
       _startRefreshTimerIfNeeded();
     }
@@ -629,6 +655,8 @@ class _SettingsContentState extends State<_SettingsContent> {
         if (widget.category == SettingsCategory.storage) _buildStorageContent(),
         if (widget.category == SettingsCategory.connections)
           _buildConnectionsContent(),
+        if (widget.category == SettingsCategory.extensions)
+          _buildExtensionsContent(),
         if (widget.category == SettingsCategory.autoImport)
           _buildAutoImportContent(),
         if (widget.category == SettingsCategory.pendingReviews)
@@ -650,6 +678,8 @@ class _SettingsContentState extends State<_SettingsContent> {
         return 'Manage local storage, cache, and offline content.';
       case SettingsCategory.connections:
         return 'Connect external services to enhance your experience.';
+      case SettingsCategory.extensions:
+        return 'Import custom extensions to add music sources.';
       case SettingsCategory.account:
         return 'Manage your account and session.';
       case SettingsCategory.autoImport:
@@ -2854,11 +2884,780 @@ class _SettingsContentState extends State<_SettingsContent> {
     );
   }
 
+  Widget _buildExtensionsContent() {
+    final extensionService = ExtensionRuntimeService.instance;
+    final extensions = extensionService.installedExtensions;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader('Installed Extensions'),
+
+        // Extension System Header Card - Compact for mobile
+        _SettingsCard(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4F6BF6).withAlpha(30),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.extension,
+                    color: Color(0xFF4F6BF6),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Extensions',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'Third-party sources',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_isCheckingUpdates)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF4F6BF6),
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    onPressed: _checkForExtensionUpdates,
+                    icon: const Icon(Icons.refresh, size: 20),
+                    color: const Color(0xFF4F6BF6),
+                    tooltip: 'Check Updates',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                IconButton(
+                  onPressed: _showExtensionDeveloperHelp,
+                  icon: const Icon(Icons.help_outline, size: 20),
+                  color: Colors.grey[600],
+                  tooltip: 'Developer Guide',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                ElevatedButton(
+                  onPressed: () => _importExtension(extensionService),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4F6BF6),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Import', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Extension List
+        if (extensions.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.extension_off_outlined,
+                    size: 48,
+                    color: Colors.grey[800],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No extensions installed',
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Import a .json extension to get started',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: _downloadSampleExtension,
+                    icon: const Icon(Icons.download_outlined, size: 16),
+                    label: const Text('Download Sample'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF4F6BF6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ...extensions.map(
+            (ext) => _buildExtensionTile(extensionService, ext),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildExtensionTile(
+    ExtensionRuntimeService extensionService,
+    ExtensionMetadata ext,
+  ) {
+    final hasUpdate = _availableUpdates.containsKey(ext.id);
+    final newVersion = _availableUpdates[ext.id];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _SettingsCard(
+        child: Column(
+          children: [
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: ext.isEnabled
+                      ? const Color(0xFF4F6BF6).withAlpha(30)
+                      : Colors.grey.withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  _getExtensionTypeIcon(ext.type),
+                  color: ext.isEnabled ? const Color(0xFF4F6BF6) : Colors.grey,
+                  size: 24,
+                ),
+              ),
+              title: Row(
+                children: [
+                  Text(
+                    ext.name,
+                    style: TextStyle(
+                      color: ext.isEnabled ? Colors.white : Colors.grey,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'v${ext.version}',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                    ),
+                  ),
+                  if (hasUpdate) ...[
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.amber,
+                      size: 16,
+                    ),
+                  ],
+                ],
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 12,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          ext.author,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      ext.description.isNotEmpty
+                          ? ext.description
+                          : ext.supportedDomains.join(', '),
+                      style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              trailing: Switch(
+                value: ext.isEnabled,
+                onChanged: (value) async {
+                  await extensionService.setExtensionEnabled(ext.id, value);
+                  setState(() {});
+                },
+                activeColor: const Color(0xFF4F6BF6),
+              ),
+            ),
+            // Sub-actions area
+            Row(
+              children: [
+                Expanded(
+                  child: Material(
+                    color: Colors.white.withOpacity(0.02),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                    ),
+                    child: InkWell(
+                      onTap: hasUpdate
+                          ? () => _updateExtension(extensionService, ext.id)
+                          : _checkForExtensionUpdates,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                      ),
+                      hoverColor: hasUpdate
+                          ? Colors.greenAccent.withOpacity(0.1)
+                          : Colors.white.withOpacity(0.05),
+                      splashColor: hasUpdate
+                          ? Colors.greenAccent.withOpacity(0.2)
+                          : Colors.white.withOpacity(0.1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: hasUpdate
+                              ? [
+                                  const Icon(
+                                    Icons.system_update_alt,
+                                    size: 16,
+                                    color: Colors.greenAccent,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Update to v$newVersion',
+                                    style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ]
+                              : [
+                                  if (_isCheckingUpdates)
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.grey,
+                                            ),
+                                      ),
+                                    )
+                                  else
+                                    const Icon(
+                                      Icons.refresh,
+                                      size: 14,
+                                      color: Colors.grey,
+                                    ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Check Updates',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.white.withOpacity(0.05),
+                ),
+                Expanded(
+                  child: Material(
+                    color: Colors.white.withOpacity(0.02),
+                    borderRadius: const BorderRadius.only(
+                      bottomRight: Radius.circular(12),
+                    ),
+                    child: InkWell(
+                      onTap: () => _removeExtension(extensionService, ext),
+                      borderRadius: const BorderRadius.only(
+                        bottomRight: Radius.circular(12),
+                      ),
+                      hoverColor: Colors.redAccent.withOpacity(0.1),
+                      splashColor: Colors.redAccent.withOpacity(0.2),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(
+                              Icons.delete_outline,
+                              size: 16,
+                              color: Colors.redAccent,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Remove',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkForExtensionUpdates({bool showSnackbar = true}) async {
+    final extensionService = ExtensionRuntimeService.instance;
+
+    // Don't check if no extensions installed
+    if (extensionService.installedExtensions.isEmpty) {
+      if (showSnackbar) {
+        AppSnackbar.error(context, 'No extensions installed');
+      }
+      return;
+    }
+
+    setState(() => _isCheckingUpdates = true);
+    final updates = await extensionService.checkForUpdates();
+    if (mounted) {
+      setState(() {
+        _availableUpdates = updates;
+        _isCheckingUpdates = false;
+      });
+      if (showSnackbar) {
+        if (updates.isEmpty) {
+          AppSnackbar.success(context, 'All extensions are up to date');
+        } else {
+          AppSnackbar.success(
+            context,
+            'Found ${updates.length} update${updates.length > 1 ? 's' : ''}',
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _updateExtension(
+    ExtensionRuntimeService extensionService,
+    String id,
+  ) async {
+    final result = await extensionService.updateExtension(id);
+    if (mounted) {
+      if (result.success) {
+        AppSnackbar.success(
+          context,
+          '${result.data!.name} updated to v${result.data!.version}',
+        );
+        setState(() {
+          _availableUpdates.remove(id);
+        });
+      } else {
+        AppSnackbar.error(context, 'Update failed: ${result.error}');
+      }
+    }
+  }
+
+  void _showExtensionDeveloperHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            const Icon(Icons.code, color: Color(0xFF4F6BF6), size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Extension Development',
+              style: GoogleFonts.inter(color: Colors.white, fontSize: 16),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Metadata Fields:',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildHelpRow('id', 'Unique identifier (string)'),
+              _buildHelpRow('name', 'Display name'),
+              _buildHelpRow('version', 'Semantic version (e.g. 1.0.1)'),
+              _buildHelpRow('updateUrl', 'URL to fetch the latest config JSON'),
+              const SizedBox(height: 16),
+              Text(
+                'Update System:',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'When you release a new version, simply update the "version" field in the JSON hosted at your updateUrl. The app will detect the change and prompt the user to update.',
+                style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _downloadSampleExtension();
+            },
+            icon: const Icon(Icons.download, size: 16),
+            label: Text(
+              'Download Sample',
+              style: GoogleFonts.inter(color: Colors.grey[400]),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Got it',
+              style: GoogleFonts.inter(color: const Color(0xFF4F6BF6)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadSampleExtension() async {
+    try {
+      // Load sample extension from bundled assets
+      final jsonString = await rootBundle.loadString(
+        'assets/extensions/example-extension.json',
+      );
+
+      // Get downloads directory
+      Directory? downloadsDir;
+      if (!kIsWeb && Platform.isAndroid) {
+        downloadsDir = Directory('/storage/emulated/0/Download');
+      } else if (!kIsWeb) {
+        downloadsDir = await getDownloadsDirectory();
+      }
+
+      if (downloadsDir == null) {
+        if (mounted) {
+          AppSnackbar.error(context, 'Could not access downloads folder');
+        }
+        return;
+      }
+
+      // Save file
+      final filePath = '${downloadsDir.path}/sample-extension.json';
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Sample saved to Downloads',
+          icon: Icons.download_done,
+          actionLabel: 'Open',
+          onAction: () async {
+            // Try to open the file
+            final uri = Uri.file(filePath);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri);
+            } else if (!kIsWeb && Platform.isAndroid) {
+              // Fallback: open downloads folder
+              await launchUrl(
+                Uri.parse(
+                  'content://com.android.externalstorage.documents/document/primary:Download',
+                ),
+                mode: LaunchMode.externalApplication,
+              );
+            }
+          },
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Error: $e');
+      }
+    }
+  }
+
+  Widget _buildHelpRow(String key, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$key: ',
+            style: GoogleFonts.robotoMono(
+              color: Colors.blueAccent,
+              fontSize: 12,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              desc,
+              style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _importExtension(
+    ExtensionRuntimeService extensionService,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Select Extension File',
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final importResult = await extensionService.importExtension(
+          result.files.single.path!,
+        );
+
+        if (mounted) {
+          if (importResult.success) {
+            AppSnackbar.success(
+              context,
+              'Extension "${importResult.data!.name}" imported successfully',
+            );
+            setState(() {}); // Refresh the list
+          } else {
+            AppSnackbar.error(
+              context,
+              'Failed to import: ${importResult.error}',
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Error: $e');
+      }
+    }
+  }
+
+  Future<void> _removeExtension(
+    ExtensionRuntimeService extensionService,
+    ExtensionMetadata extension,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Remove Extension',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to remove "${extension.name}"?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await extensionService.removeExtension(extension.id);
+      if (mounted) {
+        AppSnackbar.success(context, 'Extension removed');
+        setState(() {});
+      }
+    }
+  }
+
+  IconData _getExtensionTypeIcon(ExtensionType type) {
+    switch (type) {
+      case ExtensionType.scraper:
+        return Icons.search;
+      case ExtensionType.downloader:
+        return Icons.download;
+      case ExtensionType.full:
+        return Icons.extension;
+    }
+  }
+
   Widget _buildAutoImportContent() {
+    final isAndroid = !kIsWeb && Platform.isAndroid;
+    final hasCustomFolder =
+        _importFolderPath != null &&
+        !_importFolderPath!.contains('Android/data/');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader('Watched Folder'),
+
+        // Android-specific guidance card
+        if (isAndroid && !hasCustomFolder) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4F6BF6).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF4F6BF6).withOpacity(0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.folder_special,
+                      color: Color(0xFF4F6BF6),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select Your Music Folder',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Choose a folder where you\'ll drop music files for auto-import. '
+                  'This can be your Downloads folder, Music folder, or any folder you prefer.',
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _pickImportFolder,
+                    icon: const Icon(Icons.folder_open, size: 20),
+                    label: const Text('Choose Folder'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4F6BF6),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         _SettingsCard(
           child: Column(
             children: [
@@ -2871,8 +3670,12 @@ class _SettingsContentState extends State<_SettingsContent> {
                   ),
                 ),
                 subtitle: Text(
-                  _importFolderPath ?? 'Not available',
-                  style: TextStyle(color: Colors.grey[400]),
+                  _importFolderPath ?? 'No folder selected',
+                  style: TextStyle(
+                    color: hasCustomFolder || !isAndroid
+                        ? Colors.grey[400]
+                        : Colors.orange,
+                  ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2885,11 +3688,12 @@ class _SettingsContentState extends State<_SettingsContent> {
                       onPressed: _pickImportFolder,
                       tooltip: 'Change folder',
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white70),
-                      onPressed: _resetToDefaultFolder,
-                      tooltip: 'Reset to default',
-                    ),
+                    if (!isAndroid) // Only show reset on non-Android
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.white70),
+                        onPressed: _resetToDefaultFolder,
+                        tooltip: 'Reset to default',
+                      ),
                   ],
                 ),
               ),
@@ -2908,7 +3712,9 @@ class _SettingsContentState extends State<_SettingsContent> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            'Audio files dropped here will be processed automatically.',
+                            isAndroid
+                                ? 'Select any folder on your device. Music files added there will be auto-imported.'
+                                : 'Audio files dropped here will be processed automatically.',
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 12,
@@ -2935,21 +3741,25 @@ class _SettingsContentState extends State<_SettingsContent> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _resetToDefaultFolder,
-                            icon: const Icon(Icons.restore, size: 18),
-                            label: const Text('Reset Default'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.orange,
-                              side: BorderSide(
-                                color: Colors.orange.withOpacity(0.3),
+                        if (!isAndroid) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _resetToDefaultFolder,
+                              icon: const Icon(Icons.restore, size: 18),
+                              label: const Text('Reset Default'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.orange,
+                                side: BorderSide(
+                                  color: Colors.orange.withOpacity(0.3),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ],
@@ -4217,7 +5027,7 @@ class _SettingsContentState extends State<_SettingsContent> {
       _initDiscordRpcState();
     }
 
-    final isDesktop = !Platform.isAndroid && !Platform.isIOS;
+    final isDesktop = !kIsWeb && !Platform.isAndroid && !Platform.isIOS;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4916,7 +5726,7 @@ class _AppStatsState extends State<_AppStats> {
           const SizedBox(height: 12),
           _StatRow('Client Version', _version),
           const SizedBox(height: 6),
-          _StatRow('Platform', Platform.operatingSystem),
+          _StatRow('Platform', kIsWeb ? 'Web' : Platform.operatingSystem),
           const SizedBox(height: 6),
           _StatRow('User ID', _username),
         ],

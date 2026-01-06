@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animations/animations.dart';
@@ -509,7 +510,8 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
   IconData _getDeviceIcon(as_lib.AudioDeviceType? type) {
     if (type == null) {
       // Platform-based fallback icon
-      if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      if (!kIsWeb &&
+          (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
         return Icons.computer_rounded;
       }
       return Icons.smartphone_rounded;
