@@ -157,10 +157,11 @@ class KioKuuApp extends StatefulWidget {
   State<KioKuuApp> createState() => _KioKuuAppState();
 }
 
-class _KioKuuAppState extends State<KioKuuApp> {
+class _KioKuuAppState extends State<KioKuuApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Listen for incoming deep links while app is running
     _appLinks.uriLinkStream.listen((Uri uri) {
@@ -200,6 +201,19 @@ class _KioKuuAppState extends State<KioKuuApp> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Forward lifecycle changes to MusicProvider for background fetch retry
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    musicProvider.onAppLifecycleStateChange(state);
   }
 
   void _showSubscriptionRequiredSnackbar(String message) {

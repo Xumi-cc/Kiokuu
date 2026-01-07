@@ -27,6 +27,8 @@ class PermissionScreen extends StatefulWidget {
     final hasNotification = await Permission.notification.isGranted;
     final hasStorage = await _hasStoragePermission();
 
+    // Note: Folder access for auto-import is optional and can be set in Settings
+    // Offline storage uses app-specific folder which doesn't need SAF
     return !hasNotification || !hasStorage;
   }
 

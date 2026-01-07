@@ -1,11 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'import_folder_service.dart';
 
 /// Manages offline song storage - centralized song storage with playlist mapping
 ///
 /// Structure:
-/// ~/KioKuu/Offline/
+/// Android: {app-specific}/Offline/ or {user-selected-folder}/Offline/
+/// iOS: {documents}/Offline/
+/// Desktop: ~/KioKuu/Offline/
+///
+/// Subdirectories:
 /// ├── songs/{song_id}/          <- Audio files (one copy per song)
 /// │   ├── playlist.m3u8
 /// │   └── segments...
@@ -26,16 +32,47 @@ class OfflineStorageService {
   bool _isLoaded = false;
 
   /// Get the base offline directory
+  /// On Android, uses app-specific storage by default (no permissions needed).
+  /// If user has selected a custom folder via SAF, that folder is used instead.
+  /// On Desktop, uses the default ~/KioKuu folder.
   static Future<String> getOfflineDir() async {
     // Web doesn't support offline storage
     if (kIsWeb) {
       throw UnsupportedError('Offline storage not supported on web');
     }
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      final home =
-          Platform.environment['EXTERNAL_STORAGE'] ?? '/storage/emulated/0';
-      return '$home/KioKuu/Offline';
+    if (Platform.isAndroid) {
+      // Use the user-selected SAF folder from ImportFolderService
+      final importFolder = ImportFolderService.instance.importFolderPath;
+      if (importFolder != null && importFolder.isNotEmpty) {
+        // Create Offline subdirectory within the user-selected folder
+        final offlineDir = '$importFolder/Offline';
+        final dir = Directory(offlineDir);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        return offlineDir;
+      }
+
+      // Fallback to app-specific storage if no folder selected
+      // This works without any special permissions
+      final directory = await getExternalStorageDirectory();
+      if (directory != null) {
+        final fallbackDir = '${directory.path}/Offline';
+        final dir = Directory(fallbackDir);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        return fallbackDir;
+      }
+
+      throw StateError(
+        'No accessible storage directory on Android. Please select a folder in Settings.',
+      );
+    } else if (Platform.isIOS) {
+      // iOS: Use app documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      return '${directory.path}/Offline';
     } else if (Platform.isLinux || Platform.isMacOS) {
       final home = Platform.environment['HOME'] ?? '';
       return '$home/KioKuu/Offline';

@@ -71,6 +71,14 @@ class MusicProvider extends ChangeNotifier {
   Timer? _saveStateTimer;
   String _deviceId = '';
 
+  // Loading timeout to prevent stuck loading screen in background
+  Timer? _loadingTimeoutTimer;
+  static const _loadingTimeout = Duration(seconds: 30);
+
+  // Retry mechanism for background fetch failures
+  int? _pendingRetryIndex;
+  bool _isInBackground = false;
+
   // API service for subscription checks
   final _apiService = ApiService();
 
@@ -151,6 +159,46 @@ class MusicProvider extends ChangeNotifier {
     }
   }
 
+  /// Handle app lifecycle changes for background fetch retry
+  /// Call this from main.dart's WidgetsBindingObserver.didChangeAppLifecycleState
+  void onAppLifecycleStateChange(AppLifecycleState state) {
+    if (_disposed) return;
+
+    final wasInBackground = _isInBackground;
+    _isInBackground =
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden;
+
+    debugPrint(
+      '📱 App lifecycle: $state (wasInBackground: $wasInBackground, isNow: $_isInBackground)',
+    );
+
+    // Retry pending song fetch when coming back to foreground
+    if (wasInBackground && !_isInBackground && _pendingRetryIndex != null) {
+      final retryIndex = _pendingRetryIndex!;
+      _pendingRetryIndex = null;
+      debugPrint('🔄 Retrying pending song fetch for index $retryIndex');
+      playSongAtIndex(retryIndex);
+    }
+
+    // If we're stuck loading and coming back to foreground, restart the fetch
+    if (wasInBackground &&
+        !_isInBackground &&
+        _isLoading &&
+        _currentIndex >= 0) {
+      debugPrint(
+        '⚠️ App returned from background while loading - restarting fetch',
+      );
+      // Give a moment for network to stabilize, then retry
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_isLoading && !_disposed && _currentIndex >= 0) {
+          playSongAtIndex(_currentIndex);
+        }
+      });
+    }
+  }
+
   void _init() {
     // Listen to player state changes
     _mainPlayerSubscriptions.add(
@@ -182,6 +230,7 @@ class MusicProvider extends ChangeNotifier {
 
           // Clear loading when we get actual position updates (after first second)
           if (_isLoading && position.inMilliseconds > 100) {
+            _loadingTimeoutTimer?.cancel();
             _isLoading = false;
           }
 
@@ -209,6 +258,7 @@ class MusicProvider extends ChangeNotifier {
             debugPrint(
               '✅ Loading complete - duration received: ${duration.inSeconds}s',
             );
+            _loadingTimeoutTimer?.cancel();
             _isLoading = false;
           }
 
@@ -792,10 +842,27 @@ class MusicProvider extends ChangeNotifier {
   Future<void> playSongAtIndex(int index, {bool play = true}) async {
     if (index < 0 || index >= _playlist.length) return;
 
+    // Cancel any previous loading timeout
+    _loadingTimeoutTimer?.cancel();
+
     // Set loading state immediately
     _isLoading = true;
     final isPrefetched = _prefetchedIndex == index;
     debugPrint('🔄 Loading song at index $index (prefetched: $isPrefetched)');
+
+    // Start loading timeout to prevent stuck loading state in background
+    _loadingTimeoutTimer = Timer(_loadingTimeout, () {
+      if (_isLoading && !_disposed) {
+        debugPrint('⚠️ Loading timeout reached - clearing loading state');
+        _isLoading = false;
+        // Store as pending retry for when app comes back to foreground
+        if (_isInBackground) {
+          _pendingRetryIndex = index;
+          debugPrint('📌 Stored pending retry for index $index');
+        }
+        notifyListeners();
+      }
+    });
 
     try {
       _currentIndex = index;
@@ -898,6 +965,7 @@ class MusicProvider extends ChangeNotifier {
           );
           if (!hasAccess) {
             debugPrint('❌ Stream access denied: $errorMessage');
+            _loadingTimeoutTimer?.cancel();
             _isLoading = false;
             notifyListeners();
 
@@ -946,9 +1014,16 @@ class MusicProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error playing song: $e');
+      // Clear loading timeout
+      _loadingTimeoutTimer?.cancel();
       // Clear loading state on error
       if (_isLoading) {
         _isLoading = false;
+        // Store as pending retry if in background
+        if (_isInBackground) {
+          _pendingRetryIndex = index;
+          debugPrint('📌 Stored pending retry for index $index after error');
+        }
         notifyListeners();
       }
     }
@@ -989,6 +1064,7 @@ class MusicProvider extends ChangeNotifier {
 
           // Clear loading when we get actual position updates
           if (_isLoading && position.inMilliseconds > 100) {
+            _loadingTimeoutTimer?.cancel();
             _isLoading = false;
           }
 
@@ -1012,6 +1088,7 @@ class MusicProvider extends ChangeNotifier {
 
           // Clear loading when we get valid duration (audio is ready)
           if (_isLoading && duration.inMilliseconds > 0) {
+            _loadingTimeoutTimer?.cancel();
             _isLoading = false;
           }
 
@@ -1263,6 +1340,7 @@ class MusicProvider extends ChangeNotifier {
     // Stop activity broadcasting
     _activityTimer?.cancel();
     _saveStateTimer?.cancel();
+    _loadingTimeoutTimer?.cancel();
     _friendsService.clearActivity();
 
     // Cancel all subscriptions to prevent callbacks on disposed players
