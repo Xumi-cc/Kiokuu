@@ -17,6 +17,7 @@ env:
   PACKAGE_NAME: 'kiokuu'
   DEB_PACKAGE_NAME: 'kiokuu'  # Debian requires lowercase alphanums and -+. only
   APP_ID: 'com.kiokuu.app'
+  BUILD_NUMBER_OFFSET: 2500
 
 jobs:
   # ============================================================================
@@ -70,11 +71,11 @@ jobs:
 
       # Build split APKs per ABI for reduced APK size
       - name: Build Split APKs (per ABI)
-        run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }}
+        run: flutter build apk --release --split-per-abi --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       # Also build App Bundle for Play Store
       - name: Build App Bundle (AAB)
-        run: flutter build appbundle --release --build-number=${{ github.run_number }}
+        run: flutter build appbundle --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Rename artifacts
         run: |
@@ -135,7 +136,7 @@ jobs:
 
       - name: Build iOS (No Code Signing for CI)
         run: |
-          flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
+          flutter build ios --release --no-codesign --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create IPA
         run: |
@@ -185,7 +186,7 @@ jobs:
           pod install || true  # Some projects don't use pods
 
       - name: Build macOS
-        run: flutter build macos --release --build-number=${{ github.run_number }}
+        run: flutter build macos --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create DMG
         run: |
@@ -238,7 +239,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release --build-number=${{ github.run_number }}
+        run: flutter build windows --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create MSIX Package
         run: |
@@ -316,7 +317,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux
-        run: flutter build linux --release --build-number=${{ github.run_number }}
+        run: flutter build linux --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
@@ -722,7 +723,7 @@ jobs:
         run: |
           export PATH="/opt/flutter/bin:$PATH"
           flutter pub get
-          flutter build linux --release --build-number=${{ github.run_number }}
+          flutter build linux --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create Desktop Entry for Flatpak
         run: |
@@ -824,7 +825,7 @@ jobs:
       - name: Build Linux
         run: |
           export PATH="/opt/flutter/bin:$PATH"
-          flutter build linux --release --build-number=${{ github.run_number }}
+          flutter build linux --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create tarball and PKGBUILD
         run: |
@@ -1034,13 +1035,14 @@ jobs:
           
           **Arch Linux (AUR):** \`yay -S kiokuu\` or \`paru -S kiokuu\`
           
-          **Fedora/RHEL (COPR):** \`sudo dnf copr enable kiokuu/kiokuu && sudo dnf install kiokuu\`
+          **Fedora/RHEL (COPR):** \`sudo dnf copr enable YOUR_USERNAME/kiokuu && sudo dnf install kiokuu\`
           
-          **Debian/Ubuntu (APT):** 
-          \\`\\`\\`bash
-          echo "deb [trusted=yes] https://xumi-cc.github.io/Kiokuu/apt stable main" | sudo tee /etc/apt/sources.list.d/kiokuu.list
+          **Debian/Ubuntu (APT):**
+          
+          \`\`\`
+          echo "deb [trusted=yes] https://apt.kiokuu.app stable main" | sudo tee /etc/apt/sources.list.d/kiokuu.list
           sudo apt update && sudo apt install kiokuu
-          \\`\\`\\`
+          \`\`\`
           
           ---
           
@@ -1373,12 +1375,14 @@ jobs:
             cd ..
           }
           
-          # Create apt directory structure in gh-pages
-          mkdir -p gh-pages-repo/apt
-          cp -r apt-repo/* gh-pages-repo/apt/
+          # Copy APT repo to root (for apt.kiokuu.app subdomain)
+          cp -r apt-repo/* gh-pages-repo/
           
-          # Create index.html for the apt directory
-          cat > gh-pages-repo/apt/index.html << 'HTML'
+          # Add CNAME file for custom domain
+          echo "apt.kiokuu.app" > gh-pages-repo/CNAME
+          
+          # Create index.html
+          cat > gh-pages-repo/index.html << 'HTML'
           <!DOCTYPE html>
           <html>
           <head><title>Kiokuu APT Repository</title></head>
@@ -1386,21 +1390,14 @@ jobs:
           <h1>Kiokuu APT Repository</h1>
           <h2>Installation</h2>
           <pre>
-          # Add GPG key (if signed)
-          curl -fsSL https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/kiokuu.gpg
-
           # Add repository
-          echo "deb [signed-by=/usr/share/keyrings/kiokuu.gpg] https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt stable main" | \
-            sudo tee /etc/apt/sources.list.d/kiokuu.list
-
-          # Or without GPG (unsigned):
-          echo "deb [trusted=yes] https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt stable main" | \
-            sudo tee /etc/apt/sources.list.d/kiokuu.list
+          echo "deb [trusted=yes] https://apt.kiokuu.app stable main" | sudo tee /etc/apt/sources.list.d/kiokuu.list
 
           # Update and install
           sudo apt update
           sudo apt install kiokuu
           </pre>
+          <p><a href="https://kiokuu.app">Visit Kiokuu Website</a></p>
           </body>
           </html>
           HTML
