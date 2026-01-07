@@ -1,0 +1,21 @@
+Package: kiokuu
+Version: 0.9.2
+Architecture: amd64
+Maintainer: Kiokuu Team <support@kiokuu.app>
+Installed-Size: 56464
+Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
+Filename: pool/main/k/kiokuu/kiokuu_0.9.2_amd64.deb
+Size: 23084972
+MD5sum: c8b45d8db00631b53aeb7572db7e356a
+SHA1: 63b79be7a5a0216f50434a811abe862d800259e4
+SHA256: 807c7122bad3691e830672c647596b8f478747a68f6315f58e1dea6a9fd12dea
+Section: sound
+Priority: optional
+Homepage: https://github.com/Xumi-cc/Kiokuu
+Description: A beautiful music streaming and management application
+ Kiokuu is a feature-rich music application that allows you to
+ stream, manage, and enjoy your music collection across all your devices.
+ .
+ Features include cloud synchronization, lyrics display, equalizer,
+ and cross-platform support.
+

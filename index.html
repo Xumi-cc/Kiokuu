@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head><title>Kiokuu APT Repository</title></head>
+<body>
+<h1>Kiokuu APT Repository</h1>
+<h2>Installation</h2>
+<pre>
+# Add repository
+echo "deb [trusted=yes] https://apt.kiokuu.app stable main" | sudo tee /etc/apt/sources.list.d/kiokuu.list
+
+# Update and install
+sudo apt update
+sudo apt install kiokuu
+</pre>
+<p><a href="https://kiokuu.app">Visit Kiokuu Website</a></p>
+</body>
+</html>
