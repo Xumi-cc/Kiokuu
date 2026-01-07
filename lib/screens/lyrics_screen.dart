@@ -130,14 +130,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Get the custom lyric style based on context
   LyricStyle _getLyricStyle(
     BuildContext context,
     MusicProvider provider, {
     required bool isMobile,
   }) {
-    final accentColor = provider.backgroundColor ?? const Color(0xFF8B5CF6);
-
     return LyricStyles.default2.copyWith(
       // Normal text style - dimmed
       textStyle: TextStyle(
@@ -174,11 +171,10 @@ class _LyricsScreenState extends State<LyricsScreen> {
         top: isMobile ? 100 : 120,
         bottom: isMobile ? 100 : 120,
       ),
-      // Highlight effect - gradient sweep from white to accent
-      activeHighlightGradient: LinearGradient(
-        colors: [Colors.white, accentColor.withValues(alpha: 0.95)],
+      // Override default gradient with solid white
+      activeHighlightGradient: const LinearGradient(
+        colors: [Colors.white, Colors.white],
       ),
-      activeHighlightTailGradientWidth: 30.0,
       // Selection colors - same as dimmed text so no extra highlight when user scrolls
       selectedColor: Colors.white.withValues(alpha: 0.35),
       selectedTranslationColor: Colors.white.withValues(alpha: 0.35),

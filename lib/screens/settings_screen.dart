@@ -362,7 +362,7 @@ class _SettingsContentState extends State<_SettingsContent> {
   final Map<String, double> _downloadProgress = {};
   // Extension updates
   Map<String, String> _availableUpdates = {};
-  bool _isCheckingUpdates = false;
+  String? _checkingUpdateForId; // Track which extension is being checked
 
   // Subscription state
   Map<String, dynamic>? _subscription;
@@ -2934,7 +2934,7 @@ class _SettingsContentState extends State<_SettingsContent> {
                     ],
                   ),
                 ),
-                if (_isCheckingUpdates)
+                if (_checkingUpdateForId == 'all')
                   const SizedBox(
                     width: 20,
                     height: 20,
@@ -3187,7 +3187,7 @@ class _SettingsContentState extends State<_SettingsContent> {
                     child: InkWell(
                       onTap: hasUpdate
                           ? () => _updateExtension(extensionService, ext.id)
-                          : _checkForExtensionUpdates,
+                          : () => _checkSingleExtensionUpdate(ext.id, ext.name),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
@@ -3210,7 +3210,8 @@ class _SettingsContentState extends State<_SettingsContent> {
                                   ),
                                 ]
                               : [
-                                  if (_isCheckingUpdates)
+                                  if (_checkingUpdateForId == ext.id ||
+                                      _checkingUpdateForId == 'all')
                                     const SizedBox(
                                       width: 14,
                                       height: 14,
@@ -3295,12 +3296,12 @@ class _SettingsContentState extends State<_SettingsContent> {
       return;
     }
 
-    setState(() => _isCheckingUpdates = true);
+    setState(() => _checkingUpdateForId = 'all');
     final updates = await extensionService.checkForUpdates();
     if (mounted) {
       setState(() {
         _availableUpdates = updates;
-        _isCheckingUpdates = false;
+        _checkingUpdateForId = null;
       });
       if (showSnackbar) {
         if (updates.isEmpty) {
@@ -3331,6 +3332,28 @@ class _SettingsContentState extends State<_SettingsContent> {
         });
       } else {
         AppSnackbar.error(context, 'Update failed: ${result.error}');
+      }
+    }
+  }
+
+  Future<void> _checkSingleExtensionUpdate(String id, String name) async {
+    final extensionService = ExtensionRuntimeService.instance;
+
+    setState(() => _checkingUpdateForId = id);
+    final newVersion = await extensionService.checkForUpdateSingle(id);
+
+    if (mounted) {
+      setState(() {
+        _checkingUpdateForId = null;
+        if (newVersion != null) {
+          _availableUpdates[id] = newVersion;
+        }
+      });
+
+      if (newVersion != null) {
+        AppSnackbar.success(context, '$name v$newVersion available!');
+      } else {
+        AppSnackbar.success(context, '$name is up to date');
       }
     }
   }

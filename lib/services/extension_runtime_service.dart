@@ -214,6 +214,32 @@ class ExtensionRuntimeService {
     return updates;
   }
 
+  /// Check for update for a single extension by ID
+  Future<String?> checkForUpdateSingle(String id) async {
+    final ext = _extensions[id];
+    if (ext == null || ext.updateUrl == null) {
+      return null;
+    }
+
+    try {
+      final response = await _httpClient
+          .get(Uri.parse(ext.updateUrl!))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final remoteJson = jsonDecode(response.body);
+        final remoteVersion = remoteJson['version'] as String?;
+        if (remoteVersion != null &&
+            _isNewerVersion(ext.version, remoteVersion)) {
+          return remoteVersion;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Update check failed for ${ext.name}: $e');
+    }
+    return null;
+  }
+
   /// Update an extension from its remote URL
   Future<ExtensionResult<ExtensionMetadata>> updateExtension(String id) async {
     final ext = _extensions[id];
