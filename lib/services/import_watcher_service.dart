@@ -26,7 +26,12 @@ class ImportWatcherService {
 
   /// Start watching the import folder for new files
   void startWatching({required OnFilesDetected onFilesDetected}) {
-    if (_isWatching) return;
+    if (_isWatching) {
+      // If we're already watching, check if the path changed
+      // If path changed, we should restart
+      // implementation detail: for now, assume explicit restartWatching calls for path changes
+      return;
+    }
 
     final importPath = ImportFolderService.instance.importFolderPath;
     if (importPath == null) {
@@ -57,6 +62,20 @@ class ImportWatcherService {
     } catch (e) {
       debugPrint('⚠️ Failed to start file watcher: $e');
     }
+  }
+
+  /// Restart the watcher (e.g., when import folder changes)
+  void restartWatching() {
+    if (_onFilesDetected == null) {
+      debugPrint('⚠️ Cannot restart watcher: callback not set');
+      return;
+    }
+
+    debugPrint('🔄 Restarting import watcher...');
+    stopWatching();
+
+    // Allow a brief moment for stream cleanup
+    Future.microtask(() => startWatching(onFilesDetected: _onFilesDetected!));
   }
 
   /// Stop watching the import folder

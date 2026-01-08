@@ -540,6 +540,10 @@ class _SettingsContentState extends State<_SettingsContent> {
           setState(() {
             _importFolderPath = result;
           });
+
+          // Restart watcher to monitor the new folder
+          ImportWatcherService.instance.restartWatching();
+
           if (mounted) {
             AppSnackbar.success(context, 'Import folder updated successfully');
           }
@@ -619,6 +623,10 @@ class _SettingsContentState extends State<_SettingsContent> {
       setState(() {
         _importFolderPath = ImportFolderService.instance.importFolderPath;
       });
+
+      // Restart watcher to monitor the default folder
+      ImportWatcherService.instance.restartWatching();
+
       if (mounted) {
         AppSnackbar.success(context, 'Reverted to default import folder');
       }

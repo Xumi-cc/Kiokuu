@@ -8,6 +8,7 @@ import 'extension_manager_service.dart';
 import 'llm_match_service.dart';
 import 'import_log_service.dart';
 import 'import_task_persistence.dart';
+import 'fingerprint_service.dart';
 
 export 'llm_match_service.dart' show LlmMatchResult;
 
@@ -219,10 +220,29 @@ class ImportProcessorService {
       await _extractMetadata(task);
       log.metadataExtracted(task.title, task.artist);
 
-      // Step 2: AI matching for Spotify ID
-      task.status = ImportStatus.matchingWithAI;
+      // Step 2: Try fingerprint matching first (most accurate for known songs)
+      task.status = ImportStatus.matchingWithAI; // Reuse status
       _onProgress?.call(_tasks);
-      await _matchWithAI(task);
+
+      final fingerprintResult = await _tryFingerprintMatch(task);
+      if (fingerprintResult != null && fingerprintResult.hasSpotifyId) {
+        // Fingerprint found a match with Spotify ID!
+        task.aiMatchResult = LlmMatchResult(
+          title: fingerprintResult.title ?? task.title ?? '',
+          artist: fingerprintResult.artist ?? task.artist ?? '',
+          album: fingerprintResult.album ?? '',
+          spotifyId: fingerprintResult.spotifyId!,
+          confidence: fingerprintResult.confidence,
+          reasoning: 'Identified via audio fingerprint (AcoustID)',
+        );
+        debugPrint(
+          '🎯 Fingerprint match: ${fingerprintResult.title} - ${fingerprintResult.artist}',
+        );
+      } else {
+        // Fallback to AI matching
+        debugPrint('🤖 Fingerprint not found, trying AI matching...');
+        await _matchWithAI(task);
+      }
 
       // Step 3: Check confidence and decide whether to auto-upload or ask for review
       if (task.aiMatchResult != null) {
@@ -496,6 +516,51 @@ class ImportProcessorService {
     } catch (e) {
       log.error('LLM matching failed', details: e.toString());
       debugPrint('⚠️ LLM matching failed: $e');
+      return null;
+    }
+  }
+
+  /// Try matching using audio fingerprint (server-side AcoustID)
+  /// This is the most accurate method for known songs
+  Future<FingerprintResult?> _tryFingerprintMatch(ImportTask task) async {
+    final log = ImportLogService.instance;
+    final fingerprintService = FingerprintService.instance;
+
+    try {
+      // Check if fingerprinting is available on the backend
+      final isAvailable = await fingerprintService.isAvailable();
+      if (!isAvailable) {
+        debugPrint('🔇 Fingerprint service not available on backend');
+        return null;
+      }
+
+      debugPrint(
+        '🔍 Sending audio for fingerprint identification: ${task.fileName}',
+      );
+      log.info('Identifying via audio fingerprint...');
+
+      final result = await fingerprintService.identifyAudio(task.file);
+
+      if (result == null) {
+        debugPrint('❌ Fingerprint identification failed');
+        return null;
+      }
+
+      if (!result.found) {
+        debugPrint('❌ No fingerprint match found');
+        return null;
+      }
+
+      if (result.hasSpotifyId) {
+        log.info(
+          'Fingerprint: ${result.title} by ${result.artist} (${(result.confidence * 100).toStringAsFixed(0)}%)',
+        );
+      }
+
+      return result;
+    } catch (e) {
+      log.warning('Fingerprint matching failed: $e');
+      debugPrint('⚠️ Fingerprint matching error: $e');
       return null;
     }
   }
