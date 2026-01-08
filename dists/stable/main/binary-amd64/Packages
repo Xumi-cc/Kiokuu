@@ -2,13 +2,13 @@ Package: kiokuu
 Version: 0.9.2
 Architecture: amd64
 Maintainer: Kiokuu Team <support@kiokuu.app>
-Installed-Size: 56464
+Installed-Size: 56496
 Depends: libgtk-3-0, libmpv1 | libmpv2, libc6
 Filename: pool/main/k/kiokuu/kiokuu_0.9.2_amd64.deb
-Size: 23090656
-MD5sum: 491d662ba23b4177f6f827b8ff98ccb8
-SHA1: b224f9ea1c6faefa167cb470d5176c1133b6083c
-SHA256: 624e9f9916a5e9d7dc0847099016fcb334c021747f4d6b94679b9b86f998a2ac
+Size: 23078974
+MD5sum: 6dc1ac296f0cd7a39679e328b5de9833
+SHA1: 67ed333e0404d8ef3f0ce0ef8ea1376aa21a9b00
+SHA256: 540160d96fe5ca40bd72bae9b7f8ea98a3a8738de4c612ff64d5dffa0a7f1734
 Section: sound
 Priority: optional
 Homepage: https://github.com/Xumi-cc/Kiokuu

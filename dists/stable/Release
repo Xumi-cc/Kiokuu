@@ -7,5 +7,5 @@ Architectures: amd64
 Components: main
 Description: Kiokuu Music Application Repository
 SHA256:
- 359eb8db001a4ffcf2cd1201a01c0e053750be25d542ac80a34bac2e414b7607 92 main/binary-amd64/Packages
- 457c05859391a6b74eb33dbc5187b05b8b3c7b9f043106aca92b726e4b1c48d2 95 main/binary-amd64/Packages.gz
+ 8788c39aeb5506c691588a0f0a8d653a72c2f8678c9f22131e699a6ae0529768 92 main/binary-amd64/Packages
+ 3755f69f160957c2f76d46b5a7df0a63f22c5f2921f3aeb12834063a06a403fc 95 main/binary-amd64/Packages.gz
