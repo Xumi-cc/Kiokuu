@@ -23,6 +23,12 @@ class VerifiedSource {
   final int? bitDepth;
   final int? sampleRate;
   final String? quality;
+  // Track metadata from source (for verification)
+  final String? sourceTitle;
+  final String? sourceArtist;
+  final String? sourceAlbum;
+  final String? sourceCoverUrl;
+  final String? sourceIsrc;
 
   const VerifiedSource({
     required this.name,
@@ -36,6 +42,11 @@ class VerifiedSource {
     this.bitDepth,
     this.sampleRate,
     this.quality,
+    this.sourceTitle,
+    this.sourceArtist,
+    this.sourceAlbum,
+    this.sourceCoverUrl,
+    this.sourceIsrc,
   });
 }
 
@@ -248,6 +259,11 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
           bitDepth: info.bitDepth,
           sampleRate: info.sampleRate,
           quality: info.quality,
+          sourceTitle: info.sourceTitle,
+          sourceArtist: info.sourceArtist,
+          sourceAlbum: info.sourceAlbum,
+          sourceCoverUrl: info.sourceCoverUrl,
+          sourceIsrc: info.sourceIsrc,
         );
       } else {
         return VerifiedSource(
@@ -1111,6 +1127,67 @@ class _UploadSongSheetState extends State<UploadSongSheet> {
                                   ? Colors.white54
                                   : Colors.redAccent.withOpacity(0.7),
                               fontSize: 11,
+                            ),
+                          ),
+                        // Source track info (for verification)
+                        if (isWorking && source.sourceTitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                // Small cover thumbnail
+                                if (source.sourceCoverUrl != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Image.network(
+                                        source.sourceCoverUrl!,
+                                        width: 32,
+                                        height: 32,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 32,
+                                          height: 32,
+                                          color: Colors.grey[800],
+                                          child: const Icon(
+                                            Icons.music_note,
+                                            color: Colors.grey,
+                                            size: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        source.sourceTitle!,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (source.sourceArtist != null)
+                                        Text(
+                                          source.sourceArtist!,
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 10,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         // Technical details

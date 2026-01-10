@@ -100,6 +100,9 @@ dependencies:
   # HTML parsing for extensions
   html: ^0.15.5
 
+  # Image picker for profile photo upload
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -738,6 +738,12 @@ class ExtensionRuntimeService {
       int? extractedBitDepth;
       int? extractedSampleRate;
       String? extractedQuality;
+      // Track metadata from source
+      String? sourceTitle;
+      String? sourceArtist;
+      String? sourceAlbum;
+      String? sourceCoverUrl;
+      String? sourceIsrc;
 
       for (final infoUrl in urlsToTry) {
         try {
@@ -886,6 +892,71 @@ class ExtensionRuntimeService {
               continue;
             }
 
+            // 5. Fetch track metadata if infoUrl is configured
+            if (downloadConfig.infoUrlTemplate != null) {
+              try {
+                // Get mirror domain from current URL
+                final currentUri = Uri.parse(infoUrl);
+                final domain = '${currentUri.scheme}://${currentUri.host}';
+
+                final infoUrlFinal = downloadConfig.infoUrlTemplate!
+                    .replaceAll('{domain}', domain)
+                    .replaceAll('{id}', idToUse);
+
+                debugPrint('📋 Fetching track info from: $infoUrlFinal');
+                final infoResponse = await _httpClient
+                    .get(
+                      Uri.parse(infoUrlFinal),
+                      headers: config.defaultHeaders,
+                    )
+                    .timeout(const Duration(seconds: 5));
+
+                if (infoResponse.statusCode == 200) {
+                  final infoData = jsonDecode(infoResponse.body);
+
+                  sourceTitle = _getNestedValue(
+                    infoData,
+                    downloadConfig.infoTitlePath ?? 'data.title',
+                  )?.toString();
+
+                  sourceArtist = _getNestedValue(
+                    infoData,
+                    downloadConfig.infoArtistPath ?? 'data.artist.name',
+                  )?.toString();
+
+                  sourceAlbum = _getNestedValue(
+                    infoData,
+                    downloadConfig.infoAlbumPath ?? 'data.album.title',
+                  )?.toString();
+
+                  final coverId = _getNestedValue(
+                    infoData,
+                    downloadConfig.infoCoverPath ?? 'data.album.cover',
+                  )?.toString();
+
+                  if (coverId != null) {
+                    final prefix =
+                        downloadConfig.infoCoverUrlPrefix ??
+                        'https://resources.tidal.com/images/';
+                    sourceCoverUrl =
+                        '$prefix${coverId.replaceAll('-', '/')}/640x640.jpg';
+                  }
+
+                  sourceIsrc = _getNestedValue(
+                    infoData,
+                    downloadConfig.infoIsrcPath ?? 'data.isrc',
+                  )?.toString();
+
+                  debugPrint(
+                    '📋 Source track: "$sourceTitle" by $sourceArtist',
+                  );
+                }
+              } catch (e) {
+                debugPrint('⚠️ Failed to fetch track info: $e');
+                // Don't fail the download, just skip metadata
+              }
+            }
+
             return ExtensionResult.success(
               DownloadInfo(
                 url: downloadUrl,
@@ -894,6 +965,11 @@ class ExtensionRuntimeService {
                 bitDepth: extractedBitDepth,
                 sampleRate: extractedSampleRate,
                 quality: extractedQuality,
+                sourceTitle: sourceTitle,
+                sourceArtist: sourceArtist,
+                sourceAlbum: sourceAlbum,
+                sourceCoverUrl: sourceCoverUrl,
+                sourceIsrc: sourceIsrc,
               ),
             );
           }
@@ -1169,6 +1245,15 @@ class DownloadConfig {
   pollResultPath; // JSON path to extract final URL from poll response
   final int? maxPollAttempts; // Maximum number of times to poll
   final int pollIntervalMs; // Interval between polls in milliseconds
+  // Track metadata fetching (optional)
+  final String?
+  infoUrlTemplate; // URL template to fetch track info (e.g. /info/?id={id})
+  final String? infoTitlePath; // JSON path to track title
+  final String? infoArtistPath; // JSON path to artist name
+  final String? infoAlbumPath; // JSON path to album name
+  final String? infoCoverPath; // JSON path to cover art URL/ID
+  final String? infoCoverUrlPrefix; // Prefix to add to cover ID to make URL
+  final String? infoIsrcPath; // JSON path to ISRC
 
   const DownloadConfig({
     this.urlTemplate,
@@ -1188,6 +1273,13 @@ class DownloadConfig {
     this.pollResultPath,
     this.maxPollAttempts,
     this.pollIntervalMs = 3000,
+    this.infoUrlTemplate,
+    this.infoTitlePath,
+    this.infoArtistPath,
+    this.infoAlbumPath,
+    this.infoCoverPath,
+    this.infoCoverUrlPrefix,
+    this.infoIsrcPath,
   });
 
   factory DownloadConfig.fromJson(Map<String, dynamic> json) {
@@ -1211,6 +1303,13 @@ class DownloadConfig {
       pollResultPath: json['pollResultPath'] as String?,
       maxPollAttempts: json['maxPollAttempts'] as int?,
       pollIntervalMs: json['pollInterval'] as int? ?? 3000,
+      infoUrlTemplate: json['infoUrl'] as String?,
+      infoTitlePath: json['infoTitlePath'] as String?,
+      infoArtistPath: json['infoArtistPath'] as String?,
+      infoAlbumPath: json['infoAlbumPath'] as String?,
+      infoCoverPath: json['infoCoverPath'] as String?,
+      infoCoverUrlPrefix: json['infoCoverUrlPrefix'] as String?,
+      infoIsrcPath: json['infoIsrcPath'] as String?,
     );
   }
 }
@@ -1250,6 +1349,12 @@ class DownloadInfo {
   final int? bitDepth;
   final int? sampleRate;
   final String? quality;
+  // Track metadata from source
+  final String? sourceTitle;
+  final String? sourceArtist;
+  final String? sourceAlbum;
+  final String? sourceCoverUrl;
+  final String? sourceIsrc;
 
   const DownloadInfo({
     required this.url,
@@ -1258,9 +1363,14 @@ class DownloadInfo {
     this.bitDepth,
     this.sampleRate,
     this.quality,
+    this.sourceTitle,
+    this.sourceArtist,
+    this.sourceAlbum,
+    this.sourceCoverUrl,
+    this.sourceIsrc,
   });
 
   @override
   String toString() =>
-      'DownloadInfo(url: $url, format: $format, codec: $codec, bitDepth: $bitDepth, sampleRate: $sampleRate, quality: $quality)';
+      'DownloadInfo(url: $url, format: $format, codec: $codec, bitDepth: $bitDepth, sampleRate: $sampleRate, quality: $quality, sourceTitle: $sourceTitle, sourceArtist: $sourceArtist)';
 }

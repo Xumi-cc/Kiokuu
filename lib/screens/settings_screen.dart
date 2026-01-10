@@ -13,6 +13,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/discord_rpc_service.dart';
 import '../services/extension_manager_service.dart';
@@ -5026,6 +5028,9 @@ class _SettingsContentState extends State<_SettingsContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _SectionHeader('Profile'),
+        _ProfileEditor(),
+        const SizedBox(height: 32),
         _SectionHeader('Session'),
         _SettingsCard(
           child: ListTile(
@@ -5789,6 +5794,583 @@ class _StatRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Profile Editor Widget for Account Settings
+class _ProfileEditor extends StatefulWidget {
+  @override
+  State<_ProfileEditor> createState() => _ProfileEditorState();
+}
+
+class _ProfileEditorState extends State<_ProfileEditor> {
+  final _api = ApiService();
+  final _storage = const FlutterSecureStorage();
+  final _usernameController = TextEditingController();
+
+  bool _isLoading = true;
+  bool _isSavingUsername = false;
+  bool _isUploadingPhoto = false;
+  String _currentUsername = '';
+  String _photoUrl = '';
+  bool _hasCustomPhoto = false;
+  String? _errorMessage;
+  String? _successMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+    // Listen to text changes to update Save button state
+    _usernameController.addListener(_onUsernameChanged);
+  }
+
+  void _onUsernameChanged() {
+    // Trigger rebuild to update button state
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _usernameController.removeListener(_onUsernameChanged);
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final profile = await _api.getProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _currentUsername = profile['username'] as String? ?? '';
+          _usernameController.text = _currentUsername;
+          _photoUrl = profile['photo_url'] as String? ?? '';
+          _hasCustomPhoto = profile['has_custom_photo'] as bool? ?? false;
+          _isLoading = false;
+        });
+      } else {
+        // Fallback to local storage
+        final username = await _storage.read(key: 'username');
+        final photoUrl = await _storage.read(key: 'photo_url');
+        if (mounted) {
+          setState(() {
+            _currentUsername = username ?? '';
+            _usernameController.text = _currentUsername;
+            _photoUrl = photoUrl ?? '';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load profile';
+        });
+      }
+    }
+  }
+
+  Future<void> _saveUsername() async {
+    final newUsername = _usernameController.text.trim();
+    if (newUsername.isEmpty || newUsername == _currentUsername) return;
+
+    setState(() {
+      _isSavingUsername = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    final (success, message) = await _api.updateUsername(newUsername);
+
+    if (mounted) {
+      setState(() {
+        _isSavingUsername = false;
+        if (success) {
+          _currentUsername = newUsername;
+          _successMessage = message;
+        } else {
+          _errorMessage = message;
+        }
+      });
+
+      // Clear success message after 3 seconds
+      if (success) {
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _successMessage = null);
+        });
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    // Check if we're on web
+    if (kIsWeb) {
+      // Use file_picker for web
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+
+        // Check file size (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+          setState(() {
+            _errorMessage = 'Photo too large. Maximum size is 2MB';
+          });
+          return;
+        }
+
+        // For web, we need to save bytes to a temp file
+        // This is handled differently - we'll show an error for now
+        setState(() {
+          _errorMessage =
+              'Photo upload from web coming soon. Please use mobile or desktop.';
+        });
+        return;
+      }
+      return;
+    }
+
+    // Use image_picker for mobile/desktop
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+
+    if (picked == null) return;
+
+    // Check file size
+    final file = File(picked.path);
+    final fileSize = await file.length();
+    if (fileSize > 2 * 1024 * 1024) {
+      setState(() {
+        _errorMessage = 'Photo too large. Maximum size is 2MB';
+      });
+      return;
+    }
+
+    setState(() {
+      _isUploadingPhoto = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    final (success, result) = await _api.uploadProfilePhoto(picked.path);
+
+    if (mounted) {
+      setState(() {
+        _isUploadingPhoto = false;
+        if (success) {
+          _photoUrl = result;
+          _hasCustomPhoto = true;
+          _successMessage = 'Profile photo updated!';
+        } else {
+          _errorMessage = result;
+        }
+      });
+
+      // Clear success message after 3 seconds
+      if (success) {
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _successMessage = null);
+        });
+      }
+    }
+  }
+
+  Future<void> _deletePhoto() async {
+    if (!_hasCustomPhoto) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'Remove Profile Photo?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will remove your custom photo and revert to your OAuth provider photo (if available).',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isUploadingPhoto = true;
+      _errorMessage = null;
+    });
+
+    final (success, result) = await _api.deleteProfilePhoto();
+
+    if (mounted) {
+      setState(() {
+        _isUploadingPhoto = false;
+        if (success) {
+          _photoUrl = result;
+          _hasCustomPhoto = false;
+          _successMessage = 'Photo removed';
+        } else {
+          _errorMessage = result;
+        }
+      });
+
+      if (success) {
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _successMessage = null);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return _SettingsCard(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: LoadingAnimationWidget.threeArchedCircle(
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _SettingsCard(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Profile Photo Section
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Photo with edit overlay
+                GestureDetector(
+                  onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.grey[800],
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 2,
+                          ),
+                        ),
+                        child: ClipOval(
+                          child: _isUploadingPhoto
+                              ? Center(
+                                  child:
+                                      LoadingAnimationWidget.threeArchedCircle(
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                                )
+                              : _photoUrl.isNotEmpty
+                              ? Image.network(
+                                  _photoUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _buildDefaultAvatar(),
+                                )
+                              : _buildDefaultAvatar(),
+                        ),
+                      ),
+                      // Camera overlay
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7B68EE),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.black, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 20),
+                // Photo info & actions
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Profile Photo',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Max 2MB • JPG, PNG, GIF, or WebP',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _isUploadingPhoto
+                                ? null
+                                : _pickAndUploadPhoto,
+                            icon: const Icon(Icons.upload, size: 16),
+                            label: const Text('Upload'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(color: Colors.grey[700]!),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                          if (_hasCustomPhoto) ...[
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: _isUploadingPhoto
+                                  ? null
+                                  : _deletePhoto,
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              label: const Text('Remove'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                                side: const BorderSide(color: Colors.redAccent),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey[800]),
+            const SizedBox(height: 20),
+
+            // Username Section
+            const Text(
+              'Username',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _usernameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Enter username',
+                hintStyle: TextStyle(color: Colors.grey[600]),
+                filled: true,
+                fillColor: Colors.grey[900],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[800]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF7B68EE)),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              onSubmitted: (_) => _saveUsername(),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '3-30 characters, letters, numbers, underscores, and hyphens only',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                  ),
+                ),
+                if (_usernameController.text.trim() != _currentUsername) ...[
+                  const SizedBox(width: 12),
+                  OutlinedButton(
+                    onPressed: _isSavingUsername ? null : _saveUsername,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: _isSavingUsername
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Save',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                  ),
+                ],
+              ],
+            ),
+
+            // Status Messages
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.redAccent,
+                      ),
+                      onPressed: () => setState(() => _errorMessage = null),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (_successMessage != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _successMessage!,
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultAvatar() {
+    final initial = _currentUsername.isNotEmpty
+        ? _currentUsername[0].toUpperCase()
+        : '?';
+    return Container(
+      color: const Color(0xFF7B68EE),
+      child: Center(
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 }

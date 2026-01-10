@@ -903,6 +903,179 @@ class ApiService {
     }
   }
 
+  // =====================
+  // Profile Management
+  // =====================
+
+  /// Get current user's profile information
+  Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting profile: $e');
+      return null;
+    }
+  }
+
+  /// Update current user's username
+  /// Returns (success, message)
+  Future<(bool, String)> updateUsername(String newUsername) async {
+    try {
+      final token = await _token;
+      final response = await _putWithRetry(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'username': newUsername}),
+      );
+
+      if (_checkUnauthorized(response)) {
+        return (false, 'Authentication failed');
+      }
+
+      if (response.statusCode == 200) {
+        // Update local storage
+        await _storage.write(key: 'username', value: newUsername);
+        return (true, 'Username updated successfully');
+      }
+
+      // Try to extract error message
+      try {
+        final data = jsonDecode(response.body);
+        return (
+          false,
+          (data['error'] as String?) ?? 'Failed to update username',
+        );
+      } catch (_) {
+        return (false, 'Failed to update username (${response.statusCode})');
+      }
+    } catch (e) {
+      debugPrint('Error updating username: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
+  /// Upload a custom profile photo
+  /// [filePath] - Path to the image file (max 2MB)
+  /// Returns (success, photoUrl or error message)
+  Future<(bool, String)> uploadProfilePhoto(String filePath) async {
+    try {
+      final token = await _token;
+
+      // Check file size (max 2MB)
+      final file = File(filePath);
+      final fileSize = await file.length();
+      if (fileSize > 2 * 1024 * 1024) {
+        return (false, 'Photo too large. Maximum size is 2MB');
+      }
+
+      // Step 1: Get best upload server dynamically (same as song uploads)
+      String uploadBaseUrl = baseUrl;
+      try {
+        final serverResponse = await http.get(
+          Uri.parse('$baseUrl/upload/server'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+
+        if (serverResponse.statusCode == 200) {
+          final serverData = jsonDecode(serverResponse.body);
+          final serverUrl = serverData['server'] as String?;
+          if (serverUrl != null && serverUrl.isNotEmpty) {
+            // Extract base URL from TUS URL (remove /tus/ suffix)
+            uploadBaseUrl = serverUrl.replaceAll(RegExp(r'/tus/?$'), '');
+            debugPrint('📤 Profile photo upload using server: $uploadBaseUrl');
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to fetch upload server: $e, using default');
+      }
+
+      // Step 2: Upload to the selected server
+      var request = http.MultipartRequest(
+        'PUT',
+        Uri.parse('$uploadBaseUrl/user/photo'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.files.add(await http.MultipartFile.fromPath('photo', filePath));
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 401) {
+        await _handleUnauthorized();
+        return (false, 'Authentication failed');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final photoUrl = data['photo_url'] as String? ?? '';
+        // Update local storage
+        await _storage.write(key: 'photo_url', value: photoUrl);
+        return (true, photoUrl);
+      }
+
+      // Try to extract error message
+      try {
+        final data = jsonDecode(response.body);
+        return (false, (data['error'] as String?) ?? 'Failed to upload photo');
+      } catch (_) {
+        return (false, 'Failed to upload photo (${response.statusCode})');
+      }
+    } catch (e) {
+      debugPrint('Error uploading profile photo: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
+  /// Delete custom profile photo (reverts to OAuth photo if available)
+  /// Returns (success, fallback photoUrl or error message)
+  Future<(bool, String)> deleteProfilePhoto() async {
+    try {
+      final token = await _token;
+      final response = await _deleteWithRetry(
+        Uri.parse('$baseUrl/user/photo'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return (false, 'Authentication failed');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final photoUrl = data['photo_url'] as String? ?? '';
+        // Update local storage with fallback OAuth photo
+        await _storage.write(key: 'photo_url', value: photoUrl);
+        return (true, photoUrl);
+      }
+
+      try {
+        final data = jsonDecode(response.body);
+        return (false, (data['error'] as String?) ?? 'Failed to delete photo');
+      } catch (_) {
+        return (false, 'Failed to delete photo (${response.statusCode})');
+      }
+    } catch (e) {
+      debugPrint('Error deleting profile photo: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
   /// AI-powered song matching (Premium+ only)
   /// Returns the best Spotify match using AI reasoning
   Future<Map<String, dynamic>?> aiMatch({
