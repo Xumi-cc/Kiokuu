@@ -195,21 +195,45 @@ jobs:
           
           mkdir -p release-artifacts/macos
           
+          APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
+          
+          # Verify the .app bundle exists
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ ERROR: App bundle not found at $APP_PATH"
+            echo "Contents of build/macos/Build/Products/Release/:"
+            ls -la "build/macos/Build/Products/Release/" || echo "Directory does not exist"
+            exit 1
+          fi
+          
+          echo "✅ Found app bundle at $APP_PATH"
+          echo "App bundle size: $(du -sh "$APP_PATH" | cut -f1)"
+          
           # Install create-dmg
           brew install create-dmg || true
           
-          # Create DMG
-          create-dmg \
+          # Create DMG with proper icon positioning
+          # --icon positions the app at x=175, --app-drop-link positions Applications at x=425
+          if create-dmg \
             --volname "${APP_NAME}" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --app-drop-link 400 185 \
+            --icon "${APP_NAME}.app" 175 185 \
+            --app-drop-link 425 185 \
+            --hide-extension "${APP_NAME}.app" \
             "release-artifacts/macos/${PACKAGE_NAME}-${VERSION}-macos.dmg" \
-            "build/macos/Build/Products/Release/${APP_NAME}.app" || \
-          # Fallback: create zip if DMG fails
-          (cd "build/macos/Build/Products/Release" && \
-           zip -r "../../../../../release-artifacts/macos/${PACKAGE_NAME}-${VERSION}-macos.zip" "${APP_NAME}.app")
+            "$APP_PATH"; then
+            echo "✅ DMG created successfully"
+          else
+            echo "⚠️ create-dmg failed, falling back to zip"
+            cd "build/macos/Build/Products/Release"
+            zip -r "../../../../../release-artifacts/macos/${PACKAGE_NAME}-${VERSION}-macos.zip" "${APP_NAME}.app"
+            echo "✅ ZIP fallback created"
+          fi
+          
+          # Verify output
+          echo "📦 Release artifacts:"
+          ls -la release-artifacts/macos/
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
