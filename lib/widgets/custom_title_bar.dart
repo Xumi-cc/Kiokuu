@@ -37,6 +37,7 @@ class CustomTitleBar extends StatefulWidget {
 
 class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
   bool _isFocused = true;
+  bool _isMaximized = false;
 
   @override
   void initState() {
@@ -53,9 +54,11 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
 
   Future<void> _updateWindowState() async {
     final isFocused = await windowManager.isFocused();
+    final isMaximized = await windowManager.isMaximized();
     if (mounted) {
       setState(() {
         _isFocused = isFocused;
+        _isMaximized = isMaximized;
       });
     }
   }
@@ -68,6 +71,21 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
   @override
   void onWindowBlur() {
     setState(() => _isFocused = false);
+  }
+
+  @override
+  void onWindowMaximize() {
+    setState(() => _isMaximized = true);
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    setState(() => _isMaximized = false);
+  }
+
+  @override
+  void onWindowRestore() {
+    setState(() => _isMaximized = false);
   }
 
   @override
@@ -148,6 +166,19 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
           onPressed: () => windowManager.minimize(),
           hoverColor: Colors.white.withOpacity(0.1),
         ),
+        // Maximize/Restore button
+        _WindowButton(
+          icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
+          onPressed: () {
+            if (_isMaximized) {
+              windowManager.unmaximize();
+            } else {
+              windowManager.maximize();
+            }
+          },
+          hoverColor: Colors.white.withOpacity(0.1),
+        ),
+
         // Close button
         _WindowButton(
           icon: Icons.close,
