@@ -1,1 +1,6 @@
 #include "Generated.xcconfig"
+
+// Added to fix ldid error (AltSign.Error 0) during AltStore installation
+STRIP_INSTALLED_PRODUCT = NO
+COPY_PHASE_STRIP = NO
+STRIP_STYLE = non-global
