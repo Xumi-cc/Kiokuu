@@ -48,42 +48,53 @@ class _AuthScreenState extends State<AuthScreen> {
 
     setState(() => _isLoading = true);
 
-    bool success;
-    if (_isLogin) {
-      success = await _api.login(
-        _usernameController.text,
-        _passwordController.text,
-      );
-    } else {
-      success = await _api.signup(
-        _usernameController.text,
-        _emailController.text,
-        _passwordController.text,
-      );
-      if (success) {
-        if (mounted) {
-          AppSnackbar.success(context, 'Account created! Please login.');
-          _toggleAuthMode();
-          setState(() => _isLoading = false);
-          return;
+    try {
+      bool success;
+      if (_isLogin) {
+        success = await _api.login(
+          _usernameController.text,
+          _passwordController.text,
+        );
+      } else {
+        success = await _api.signup(
+          _usernameController.text,
+          _emailController.text,
+          _passwordController.text,
+        );
+        if (success) {
+          if (mounted) {
+            AppSnackbar.success(context, 'Account created! Please login.');
+            _toggleAuthMode();
+            setState(() => _isLoading = false);
+            return;
+          }
         }
       }
-    }
 
-    setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
 
-    if (success && _isLogin) {
-      if (mounted) {
-        context.read<MusicProvider>().refreshAuthToken();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+      if (success && _isLogin) {
+        if (mounted) {
+          context.read<MusicProvider>().refreshAuthToken();
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        }
+      } else if (!success) {
+        if (mounted) {
+          AppSnackbar.error(
+            context,
+            _isLogin ? 'Invalid credentials' : 'Signup failed. Try again.',
+          );
+        }
       }
-    } else if (!success) {
+    } catch (e) {
+      // Ensure loading state is reset on any error
       if (mounted) {
+        setState(() => _isLoading = false);
         AppSnackbar.error(
           context,
-          _isLogin ? 'Invalid credentials' : 'Signup failed. Try again.',
+          'Connection failed. Please check your internet and try again.',
         );
       }
     }
