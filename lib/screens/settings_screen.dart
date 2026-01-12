@@ -29,6 +29,8 @@ import '../widgets/custom_title_bar.dart';
 import '../config/app_config.dart';
 import '../services/extension_runtime_service.dart';
 import '../models/extension_model.dart';
+import '../providers/music_provider.dart';
+import 'package:provider/provider.dart';
 import 'auth_screen.dart';
 
 // --- Models ---
@@ -519,6 +521,12 @@ class _SettingsContentState extends State<_SettingsContent> {
 
   Future<void> _logout() async {
     setState(() => _isLoggingOut = true);
+
+    // Clear music playback state before logout
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    musicProvider.clearPlaylist();
+    await musicProvider.clearSavedPlaybackState();
+
     await _api.logout();
     if (mounted) {
       Navigator.pushAndRemoveUntil(

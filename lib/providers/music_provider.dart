@@ -439,6 +439,9 @@ class MusicProvider extends ChangeNotifier {
     }
   }
 
+  // Track if we were playing before an interruption (to resume after)
+  bool _wasPlayingBeforeInterruption = false;
+
   Future<void> _initAudioSession() async {
     try {
       final session = await as_lib.AudioSession.instance;
@@ -447,9 +450,41 @@ class MusicProvider extends ChangeNotifier {
       // Initial check
       await _updateAudioDeviceName(session);
 
-      // Listen for changes
+      // Listen for device changes
       session.devicesChangedEventStream.listen((event) {
         _updateAudioDeviceName(session);
+      });
+
+      // Listen for audio interruptions (phone calls, other apps taking audio focus)
+      session.interruptionEventStream.listen((event) {
+        if (_disposed) return;
+
+        if (event.begin) {
+          // Interruption started (e.g., incoming call)
+          debugPrint('🔇 Audio interruption started: ${event.type}');
+          _wasPlayingBeforeInterruption = _isPlaying;
+          if (_isPlaying) {
+            _activePlayer.pause();
+          }
+        } else {
+          // Interruption ended (e.g., call ended)
+          debugPrint('🔊 Audio interruption ended: ${event.type}');
+          // Only resume if we were playing before and it's safe to do so
+          if (_wasPlayingBeforeInterruption &&
+              event.type != as_lib.AudioInterruptionType.unknown) {
+            _activePlayer.play();
+          }
+          _wasPlayingBeforeInterruption = false;
+        }
+      });
+
+      // Handle becoming noisy (e.g., headphones unplugged)
+      session.becomingNoisyEventStream.listen((_) {
+        if (_disposed) return;
+        debugPrint('🔇 Audio becoming noisy (headphones unplugged?)');
+        if (_isPlaying) {
+          _activePlayer.pause();
+        }
       });
     } catch (e) {
       debugPrint('Error initializing audio session: $e');

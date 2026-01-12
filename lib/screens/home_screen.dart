@@ -1054,6 +1054,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
+    // Clear music playback state before logout
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    musicProvider.clearPlaylist();
+    await musicProvider.clearSavedPlaybackState();
+
     await _api.logout();
     if (mounted) {
       Navigator.of(
