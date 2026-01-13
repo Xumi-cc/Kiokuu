@@ -266,22 +266,23 @@ jobs:
         run: flutter build windows --release --build-number=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
 
       - name: Create MSIX Package
+        shell: pwsh
         run: |
-          VERSION="${{ github.event.inputs.version || github.ref_name }}"
-          VERSION="${VERSION#v}"
-          BUILD_NUMBER=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
+          $VERSION = "${{ github.event.inputs.version || github.ref_name }}"
+          $VERSION = $VERSION -replace '^v', ''
+          $BUILD_NUMBER = ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }}
           
           # Calculate 4-part MSIX version (a.b.c.d)
           # If version is 0.9.2, MSIX version becomes 0.9.2.2501
-          MSIX_VERSION="${VERSION}.${BUILD_NUMBER}"
+          $MSIX_VERSION = "${VERSION}.${BUILD_NUMBER}"
           
-          echo "Setting MSIX version to: $MSIX_VERSION"
+          Write-Host "Setting MSIX version to: $MSIX_VERSION"
           
           # Update pubspec.yaml with dynamic version for msix tool
-          # Works by finding msix_version and replacing it
-          sed -i "s/msix_version: .*/msix_version: $MSIX_VERSION/" pubspec.yaml
-          # Also update the main version field to ensure consistency
-          sed -i "s/version: .*/version: ${VERSION}+${BUILD_NUMBER}/" pubspec.yaml
+          $pubspec = Get-Content pubspec.yaml -Raw
+          $pubspec = $pubspec -replace 'msix_version: .*', "msix_version: $MSIX_VERSION"
+          $pubspec = $pubspec -replace 'version: .*', "version: ${VERSION}+${BUILD_NUMBER}"
+          Set-Content pubspec.yaml $pubspec
           
           # Install MSIX packaging tool
           flutter pub add msix --dev
