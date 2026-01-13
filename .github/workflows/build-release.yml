@@ -280,8 +280,9 @@ jobs:
           
           # Update pubspec.yaml with dynamic version for msix tool
           $pubspec = Get-Content pubspec.yaml -Raw
+          # Use multiline regex - update msix_version first, then main version (anchored to line start)
           $pubspec = $pubspec -replace 'msix_version: .*', "msix_version: $MSIX_VERSION"
-          $pubspec = $pubspec -replace 'version: .*', "version: ${VERSION}+${BUILD_NUMBER}"
+          $pubspec = $pubspec -replace '(?m)^version: .*', "version: ${VERSION}+${BUILD_NUMBER}"
           Set-Content pubspec.yaml $pubspec
           
           # Install MSIX packaging tool
