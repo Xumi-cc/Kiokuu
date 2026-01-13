@@ -267,6 +267,22 @@ jobs:
 
       - name: Create MSIX Package
         run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          BUILD_NUMBER=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
+          
+          # Calculate 4-part MSIX version (a.b.c.d)
+          # If version is 0.9.2, MSIX version becomes 0.9.2.2501
+          MSIX_VERSION="${VERSION}.${BUILD_NUMBER}"
+          
+          echo "Setting MSIX version to: $MSIX_VERSION"
+          
+          # Update pubspec.yaml with dynamic version for msix tool
+          # Works by finding msix_version and replacing it
+          sed -i "s/msix_version: .*/msix_version: $MSIX_VERSION/" pubspec.yaml
+          # Also update the main version field to ensure consistency
+          sed -i "s/version: .*/version: ${VERSION}+${BUILD_NUMBER}/" pubspec.yaml
+          
           # Install MSIX packaging tool
           flutter pub add msix --dev
           flutter pub get
@@ -450,6 +466,7 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version || github.ref_name }}"
           VERSION="${VERSION#v}"
+          BUILD_NUMBER=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
           
           # Create DEB package structure
           mkdir -p deb_root/DEBIAN
@@ -489,11 +506,11 @@ jobs:
           cp assets/images/logo_black_bg_white.png deb_root/usr/share/icons/hicolor/256x256/apps/${{ env.PACKAGE_NAME }}.png
           cp assets/images/logo_black_bg_white.png deb_root/usr/share/pixmaps/${{ env.PACKAGE_NAME }}.png
           
-          # Create control file
+          # Create control file (Include build number in version)
           INSTALLED_SIZE=$(du -sk deb_root | cut -f1)
           cat > deb_root/DEBIAN/control << CONTROL
           Package: ${{ env.DEB_PACKAGE_NAME }}
-          Version: ${VERSION}
+          Version: ${VERSION}-${BUILD_NUMBER}
           Section: sound
           Priority: optional
           Architecture: amd64
@@ -512,12 +529,13 @@ jobs:
           # Build DEB
           dpkg-deb --build deb_root
           mkdir -p release-artifacts/linux
-          mv deb_root.deb "release-artifacts/linux/${{ env.DEB_PACKAGE_NAME }}_${VERSION}_amd64.deb"
+          mv deb_root.deb "release-artifacts/linux/${{ env.DEB_PACKAGE_NAME }}_${VERSION}-${BUILD_NUMBER}_amd64.deb"
 
       - name: Build RPM Package
         run: |
           VERSION="${{ github.event.inputs.version || github.ref_name }}"
           VERSION="${VERSION#v}"
+          BUILD_NUMBER=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
           
           # Create RPM build directory structure
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
@@ -528,11 +546,11 @@ jobs:
           tar czf "rpmbuild/SOURCES/${{ env.PACKAGE_NAME }}-${VERSION}.tar.gz" "${{ env.PACKAGE_NAME }}-${VERSION}"
           rm -rf "${{ env.PACKAGE_NAME }}-${VERSION}"
           
-          # Create spec file
+          # Create spec file (Use build number as release)
           cat > rpmbuild/SPECS/${{ env.PACKAGE_NAME }}.spec << SPEC
           Name:           ${{ env.PACKAGE_NAME }}
           Version:        ${VERSION}
-          Release:        1%{?dist}
+          Release:        ${BUILD_NUMBER}%{?dist}
           Summary:        A beautiful music streaming and management application
           
           License:        Proprietary
@@ -588,8 +606,8 @@ jobs:
           /usr/share/pixmaps/%{name}.png
           
           %changelog
-          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.app> - ${VERSION}-1
-          - Initial release
+          * $(date "+%a %b %d %Y") Kiokuu Team <support@kiokuu.app> - ${VERSION}-${BUILD_NUMBER}
+          - Automated build ${BUILD_NUMBER} for version ${VERSION}
           SPEC
           
           # Build RPM
@@ -855,6 +873,7 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version || github.ref_name }}"
           VERSION="${VERSION#v}"
+          BUILD_NUMBER=$(( ${{ env.BUILD_NUMBER_OFFSET }} + ${{ github.run_number }} ))
           
           mkdir -p release-artifacts/arch
           
@@ -866,12 +885,12 @@ jobs:
           # Calculate SHA256
           SHA256=$(sha256sum "release-artifacts/arch/${{ env.PACKAGE_NAME }}-${VERSION}-linux-x64.tar.gz" | cut -d' ' -f1)
           
-          # Create PKGBUILD
+          # Create PKGBUILD (Use build number as pkgrel)
           cat > release-artifacts/arch/PKGBUILD << EOF
           # Maintainer: Kiokuu Team <support@kiokuu.app>
           pkgname=${{ env.PACKAGE_NAME }}
           pkgver=${VERSION}
-          pkgrel=1
+          pkgrel=${BUILD_NUMBER}
           pkgdesc="A beautiful music streaming and management application"
           arch=('x86_64')
           url="https://github.com/Xumi-cc/Kiokuu"
@@ -944,7 +963,7 @@ jobs:
           pkgbase = ${{ env.PACKAGE_NAME }}
           	pkgdesc = A beautiful music streaming and management application
           	pkgver = ${VERSION}
-          	pkgrel = 1
+          	pkgrel = ${BUILD_NUMBER}
           	url = https://github.com/Xumi-cc/Kiokuu
           	arch = x86_64
           	license = custom:proprietary
