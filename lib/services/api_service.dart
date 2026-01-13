@@ -289,7 +289,17 @@ class ApiService {
       final data = jsonDecode(response.body);
       await _storage.write(key: 'auth_token', value: data['token']);
       await _storage.write(key: 'user_id', value: data['user_id']);
-      await _storage.write(key: 'username', value: trimmedUsername);
+
+      // Use username from server (case-corrected) if available
+      final serverUsername = data['username'] as String? ?? trimmedUsername;
+      await _storage.write(key: 'username', value: serverUsername);
+
+      // Save photo_url if provided
+      if (data['photo_url'] != null &&
+          (data['photo_url'] as String).isNotEmpty) {
+        await _storage.write(key: 'photo_url', value: data['photo_url']);
+      }
+
       return true;
     }
     return false;

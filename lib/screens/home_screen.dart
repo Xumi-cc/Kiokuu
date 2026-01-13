@@ -845,6 +845,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadUserProfile() async {
+    // Fetch fresh profile from API first
+    try {
+      final profile = await _api.getProfile();
+      if (profile != null && mounted) {
+        final photoUrl = profile['photo_url'] as String?;
+        final username = profile['username'] as String?;
+
+        setState(() {
+          if (photoUrl != null && photoUrl.isNotEmpty) _userPhotoUrl = photoUrl;
+          if (username != null) _userName = username;
+        });
+
+        // Update local storage with fresh data
+        if (photoUrl != null) {
+          await _storage.write(key: 'photo_url', value: photoUrl);
+        }
+        if (username != null) {
+          await _storage.write(key: 'username', value: username);
+        }
+
+        // Cache for offline mode
+        final prefs = await SharedPreferences.getInstance();
+        if (photoUrl != null) await prefs.setString('user_photo_url', photoUrl);
+        if (username != null) await prefs.setString('username', username);
+        return;
+      }
+    } catch (e) {
+      debugPrint('Error fetching profile from API: $e');
+    }
+
+    // Fallback to local storage if API fails
     final photoUrl = await _storage.read(key: 'photo_url');
     final username = await _storage.read(key: 'username');
 
@@ -853,11 +884,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (photoUrl != null) _userPhotoUrl = photoUrl;
         if (username != null) _userName = username;
       });
-
-      // Cache for offline mode
-      final prefs = await SharedPreferences.getInstance();
-      if (photoUrl != null) await prefs.setString('user_photo_url', photoUrl);
-      if (username != null) await prefs.setString('username', username);
     }
   }
 
@@ -3689,7 +3715,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
+              ).then((_) {
+                // Refresh profile when returning from settings (in case photo was updated)
+                _loadUserProfile();
+              });
             },
             child: CircleAvatar(
               radius: isLargeScreen ? 18 : 17,

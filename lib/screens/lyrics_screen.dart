@@ -22,62 +22,57 @@ class _LyricsScreenState extends State<LyricsScreen> {
   String? _currentSongId;
 
   // flutter_lyric controller
-  // flutter_lyric controller
   LyricController? _lyricController;
-
-  // Window state
-  bool _isFullscreen = false;
 
   @override
   void initState() {
     super.initState();
-    super.initState();
-    _checkFullscreenState();
-  }
-
-  Future<void> _checkFullscreenState() async {
-    if (!kIsWeb &&
-        (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
-      final isFull = await windowManager.isFullScreen();
-      if (mounted) setState(() => _isFullscreen = isFull);
-    }
+    _enterFullscreen();
   }
 
   @override
   void dispose() {
     _lyricController?.dispose();
     // Restore window state when leaving lyrics screen
-    // Restore window state when leaving lyrics screen
-    if (_isFullscreen &&
-        !kIsWeb &&
+    if (!kIsWeb &&
         (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
-      windowManager.setFullScreen(false);
+      windowManager.isFullScreen().then((isFullScreen) {
+        if (isFullScreen) {
+          windowManager.setFullScreen(false);
+        }
+        windowManager.setMaximumSize(const Size(1280, 720));
+      });
+    } else {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.edgeToEdge,
+        overlays: SystemUiOverlay.values,
+      );
     }
-
     super.dispose();
   }
 
-  Future<void> _toggleFullscreen() async {
+  Future<void> _enterFullscreen() async {
     if (!kIsWeb &&
         (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
-      final isFull = await windowManager.isFullScreen();
-      if (isFull) {
-        await windowManager.setFullScreen(false);
-        setState(() => _isFullscreen = false);
-      } else {
-        await windowManager.setFullScreen(true);
-        setState(() => _isFullscreen = true);
-      }
+      // Ensure window manager is ready
+      await windowManager.ensureInitialized();
+      // Remove max size limit to allow fullscreen
+      await windowManager.setMaximumSize(Size.infinite);
+      // Small delay for Wayland compatibility
+      await Future.delayed(const Duration(milliseconds: 50));
+      await windowManager.setFullScreen(true);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
   }
 
   Future<void> _exitLyrics() async {
-    if (_isFullscreen &&
-        !kIsWeb &&
+    if (!kIsWeb &&
         (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       await windowManager.setFullScreen(false);
+      await windowManager.setMaximumSize(const Size(1280, 720));
+      await Future.delayed(const Duration(milliseconds: 100));
     }
-
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -236,78 +231,34 @@ class _LyricsScreenState extends State<LyricsScreen> {
               ),
 
               // 3. Close Button (Top right) - Only show on desktop
-              // Window Drag Handler (Top Area)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 60,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanStart: (_) {
-                    if (!kIsWeb &&
-                        (Platform.isWindows ||
-                            Platform.isMacOS ||
-                            Platform.isLinux)) {
-                      windowManager.startDragging();
-                    }
-                  },
-                ),
-              ),
-
-              // 3. Controls (Top right)
               Positioned(
                 top: 20,
                 right: 20,
-                child: SafeArea(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Fullscreen Toggle
-                      if (!kIsWeb &&
-                          (Platform.isWindows ||
-                              Platform.isMacOS ||
-                              Platform.isLinux))
-                        IconButton(
+                child: Builder(
+                  builder: (context) {
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    if (screenWidth > 900) {
+                      return SafeArea(
+                        child: IconButton(
                           icon: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: Colors.black.withValues(alpha: 0.3),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(
-                              _isFullscreen
-                                  ? Icons.fullscreen_exit_rounded
-                                  : Icons.fullscreen_rounded,
+                            child: const Icon(
+                              Icons.close_fullscreen,
                               size: 24,
                               color: Colors.white,
                             ),
                           ),
-                          onPressed: _toggleFullscreen,
-                          tooltip: _isFullscreen
-                              ? 'Exit Fullscreen'
-                              : 'Fullscreen',
+                          onPressed: _exitLyrics,
+                          tooltip: 'Exit Fullscreen',
                         ),
-                      const SizedBox(width: 12),
-                      // Close Button
-                      IconButton(
-                        icon: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            size: 24,
-                            color: Colors.white,
-                          ),
-                        ),
-                        onPressed: _exitLyrics,
-                        tooltip: 'Close',
-                      ),
-                    ],
-                  ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
                 ),
               ),
             ],
@@ -385,53 +336,40 @@ class _LyricsScreenState extends State<LyricsScreen> {
                   ),
                 ),
                 Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onPanStart: (_) {
-                      if (!kIsWeb &&
-                          (Platform.isWindows ||
-                              Platform.isMacOS ||
-                              Platform.isLinux)) {
-                        windowManager.startDragging();
-                      }
-                    },
-                    child: Column(
-                      children: [
-                        Text(
-                          'NOW PLAYING',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.2,
-                          ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'NOW PLAYING',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          song?.title ?? '',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        song?.title ?? '',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
-                      ],
-                    ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
                 GestureDetector(
-                  onTap: _toggleFullscreen,
+                  onTap: () {},
                   child: Container(
                     width: 40,
                     height: 40,
                     alignment: Alignment.center,
                     child: Icon(
-                      _isFullscreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
+                      Icons.more_horiz,
                       color: Colors.white,
                       size: 24,
                     ),
