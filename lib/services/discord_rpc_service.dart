@@ -20,6 +20,7 @@ class DiscordRpcService {
   bool _isEnabled = false;
   Timer? _reconnectTimer;
   StreamSubscription<bool>? _connectionSub;
+  bool _hasLoggedError = false;
 
   // Current activity data
   String? _currentSongTitle;
@@ -96,7 +97,12 @@ class DiscordRpcService {
         }
       });
     } catch (e) {
-      debugPrint('❌ Failed to connect to Discord RPC: $e');
+      if (!_hasLoggedError) {
+        debugPrint(
+          'ℹ️ Discord RPC: Discord is not running or connection failed. (Quietly retrying in background)',
+        );
+        _hasLoggedError = true;
+      }
       _isConnected = false;
 
       // Retry connection after a delay

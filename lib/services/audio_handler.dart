@@ -105,6 +105,14 @@ class MediaKitAudioHandler extends BaseAudioHandler with SeekHandler {
       ),
     );
   }
+
+  /// Clean up subscriptions and resources.
+  void dispose() {
+    for (var sub in _playerSubscriptions) {
+      sub.cancel();
+    }
+    _playerSubscriptions.clear();
+  }
 }
 
 Future<MediaKitAudioHandler> initAudioService(Player player) async {

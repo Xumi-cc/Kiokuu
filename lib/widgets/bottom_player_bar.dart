@@ -246,19 +246,19 @@ class _BottomPlayerBarState extends State<BottomPlayerBar> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
                   color: Colors.white.withOpacity(0.1),
-                  image: song.artworkPath != null
-                      ? (song.artworkPath!.startsWith('http')
+                  image: song.artwork != null
+                      ? (song.artwork!.startsWith('http')
                             ? DecorationImage(
-                                image: NetworkImage(song.artworkPath!),
+                                image: NetworkImage(song.artwork!),
                                 fit: BoxFit.cover,
                               )
                             : DecorationImage(
-                                image: FileImage(File(song.artworkPath!)),
+                                image: FileImage(File(song.artwork!)),
                                 fit: BoxFit.cover,
                               ))
                       : null,
                 ),
-                child: song.artworkPath == null
+                child: song.artwork == null
                     ? Icon(
                         Icons.music_note_rounded,
                         color: Colors.white.withOpacity(0.5),

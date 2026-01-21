@@ -18,6 +18,7 @@ import '../services/analytics_service.dart';
 import '../services/playback_state_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/api_service.dart';
+import '../services/import_watcher_service.dart';
 
 enum RepeatMode { off, all, one }
 
@@ -169,6 +170,12 @@ class MusicProvider extends ChangeNotifier {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden;
+
+    if (state == AppLifecycleState.detached) {
+      debugPrint('🔌 App detached - disposing MusicProvider resources');
+      dispose();
+      return;
+    }
 
     debugPrint(
       '📱 App lifecycle: $state (wasInBackground: $wasInBackground, isNow: $_isInBackground)',
@@ -562,28 +569,26 @@ class MusicProvider extends ChangeNotifier {
 
   Future<void> _updatePalette() async {
     final song = currentSong;
-    if (song?.artworkPath != null) {
-      try {
-        debugPrint('Generating palette for ${song!.title}...');
+    final imageUrl = song?.artwork;
 
-        ImageProvider imageProvider;
-        if (song.artworkPath!.startsWith('http')) {
-          // Network image
-          imageProvider = ResizeImage(
-            NetworkImage(song.artworkPath!),
-            width: 100,
-          );
-        } else {
-          // Local file
-          imageProvider = ResizeImage(
-            FileImage(File(song.artworkPath!)),
-            width: 100,
-          );
-        }
+    if (imageUrl == null) {
+      debugPrint(
+        '📸 No artwork for "${song?.title}" (artworkPath: ${song?.artworkPath}, coverUrl: ${song?.coverUrl})',
+      );
+      _backgroundColor = null;
+      notifyListeners();
+      return;
+    }
 
+    try {
+      debugPrint('Generating palette for ${song!.title}...');
+
+      if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+        // Local file path - use FileImage
+        debugPrint('📸 Using local file for palette: $imageUrl');
         final paletteGenerator =
             await PaletteGenerator.fromImageProvider(
-              imageProvider,
+              ResizeImage(FileImage(File(imageUrl)), width: 100),
               maximumColorCount: 20,
             ).timeout(
               const Duration(seconds: 5),
@@ -591,18 +596,36 @@ class MusicProvider extends ChangeNotifier {
                 throw TimeoutException('Palette generation timed out');
               },
             );
-
-        // Prefer dominant color, fallback to muted/vibrant
         _backgroundColor =
             paletteGenerator.dominantColor?.color ??
             paletteGenerator.mutedColor?.color ??
             paletteGenerator.vibrantColor?.color;
         debugPrint('Palette generated: $_backgroundColor');
-      } catch (e) {
-        debugPrint('Error generating palette: $e');
-        _backgroundColor = null;
+        notifyListeners();
+        return;
       }
-    } else {
+
+      debugPrint('📸 Using network image for palette: $imageUrl');
+
+      final paletteGenerator =
+          await PaletteGenerator.fromImageProvider(
+            ResizeImage(NetworkImage(imageUrl), width: 100),
+            maximumColorCount: 20,
+          ).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              throw TimeoutException('Palette generation timed out');
+            },
+          );
+
+      // Prefer dominant color, fallback to muted/vibrant
+      _backgroundColor =
+          paletteGenerator.dominantColor?.color ??
+          paletteGenerator.mutedColor?.color ??
+          paletteGenerator.vibrantColor?.color;
+      debugPrint('Palette generated: $_backgroundColor');
+    } catch (e) {
+      debugPrint('Error generating palette: $e');
       _backgroundColor = null;
     }
     notifyListeners();
@@ -1353,6 +1376,27 @@ class MusicProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove all occurrences of a song by ID (e.g., when deleted from server)
+  void removeSongById(String songId) {
+    bool changed = false;
+    for (int i = _playlist.length - 1; i >= 0; i--) {
+      if (_playlist[i].id == songId) {
+        removeSong(i);
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  /// Add a song to the end of the current playback queue
+  void addSongToQueue(Song song) {
+    _playlist.add(song);
+    if (_isShuffled) {
+      _generateShuffleIndices();
+    }
+    notifyListeners();
+  }
+
   // Clear playlist
   void clearPlaylist() {
     _player.stop();
@@ -1369,16 +1413,24 @@ class MusicProvider extends ChangeNotifier {
     // Set disposed flag FIRST to immediately block all callbacks
     _disposed = true;
 
+    debugPrint('🗑️ Disposing MusicProvider and cleaning up resources...');
+
     // Save final playback state before disposing
     _savePlaybackState();
 
-    // Stop activity broadcasting
+    // Stop activity broadcasting and clear status
     _activityTimer?.cancel();
     _saveStateTimer?.cancel();
     _loadingTimeoutTimer?.cancel();
     _friendsService.clearActivity();
 
-    // Cancel all subscriptions to prevent callbacks on disposed players
+    // Clear and dispose Discord RPC (Desktop only)
+    DiscordRpcService.instance.dispose();
+
+    // Dispose import watcher (cancels file system stream)
+    ImportWatcherService.instance.dispose();
+
+    // Cancel all subscriptions FIRST to stop Dart-side callbacks
     for (var sub in _mainPlayerSubscriptions) {
       sub.cancel();
     }
@@ -1389,8 +1441,38 @@ class MusicProvider extends ChangeNotifier {
     }
     _prefetchPlayerSubscriptions.clear();
 
-    _player.dispose();
-    _prefetchPlayer?.dispose();
+    // Dispose the audio handler (MPRIS cleanup on Linux)
+    try {
+      _audioHandler?.dispose();
+    } catch (e) {
+      debugPrint('Error disposing audio handler: $e');
+    }
+
+    // Pause players to stop native playback callbacks
+    try {
+      _player.pause();
+      _prefetchPlayer?.pause();
+    } catch (e) {
+      debugPrint('Error pausing players: $e');
+    }
+
+    // CRITICAL FIX: Defer native player disposal significantly to avoid
+    // "Callback invoked after it has been deleted" crash during hot restart.
+    // Native callbacks may still be in flight even after Dart streams are cancelled.
+    Future.delayed(const Duration(milliseconds: 100), () {
+      try {
+        _player.dispose();
+      } catch (e) {
+        debugPrint('Error disposing main player: $e');
+      }
+
+      try {
+        _prefetchPlayer?.dispose();
+      } catch (e) {
+        debugPrint('Error disposing prefetch player: $e');
+      }
+    });
+
     super.dispose();
   }
 

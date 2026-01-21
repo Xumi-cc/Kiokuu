@@ -106,6 +106,7 @@ class PlaylistSong {
   final bool isOfflineAvailable; // For offline mode - false means greyed out
   final String
   source; // Audio source: "user", "tidal", etc. (for HD upgrade detection)
+  final String? uploadedBy; // Username of who uploaded the song
 
   PlaylistSong({
     required this.id,
@@ -121,6 +122,7 @@ class PlaylistSong {
     this.tags = const [],
     this.isOfflineAvailable = true,
     this.source = 'user',
+    this.uploadedBy,
   });
 
   factory PlaylistSong.fromJson(Map<String, dynamic> json) {
@@ -137,6 +139,7 @@ class PlaylistSong {
       genres: json['genres'] != null ? List<String>.from(json['genres']) : [],
       tags: json['tags'] != null ? List<String>.from(json['tags']) : [],
       source: json['source'] ?? 'user',
+      uploadedBy: json['uploaded_by'],
     );
   }
 

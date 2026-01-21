@@ -10,6 +10,7 @@ import '../widgets/bottom_player_bar.dart';
 import '../widgets/skeleton_loader.dart';
 import 'player_screen.dart';
 import 'playlist_screen.dart';
+import '../widgets/playlist_song_actions_menu.dart';
 
 class ArtistProfileScreen extends StatefulWidget {
   final String artistId;
@@ -170,6 +171,7 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
           isOwned: data['isOwned'] ?? true,
           playCount: data['play_count'] ?? 0,
           source: data['source'] ?? 'user',
+          uploadedBy: data['uploaded_by'],
         );
       }).toList();
 
@@ -535,6 +537,21 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
                           }
                         },
                         onLike: null,
+                        onMenuTap: () async {
+                          final currentUserId = await ApiService().userId;
+                          if (context.mounted) {
+                            PlaylistSongActionsMenu.show(
+                              context,
+                              songId: song.id,
+                              songTitle: song.title,
+                              uploadedBy: song.uploadedBy,
+                              currentUserId: currentUserId,
+                              onSongDeleted: () => _fetchArtistData(),
+                              menuPosition:
+                                  null, // Shows as modal on mobile, or context menu if we had position
+                            );
+                          }
+                        },
                       );
                     },
                   ),
@@ -1017,6 +1034,20 @@ class _ArtistProfileScreenState extends State<ArtistProfileScreen> {
                             provider.setPlaylist(
                               ownedSongs,
                               initialIndex: ownedIndex,
+                            );
+                          }
+                        },
+                        onMenuTap: () async {
+                          final currentUserId = await ApiService().userId;
+                          if (context.mounted) {
+                            PlaylistSongActionsMenu.show(
+                              context,
+                              songId: song.id,
+                              songTitle: song.title,
+                              uploadedBy: song.uploadedBy,
+                              currentUserId: currentUserId,
+                              onSongDeleted: () => _fetchArtistData(),
+                              menuPosition: null,
                             );
                           }
                         },

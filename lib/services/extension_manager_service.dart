@@ -73,6 +73,23 @@ class ExtensionManagerService {
       iconType: IconType.ai,
       ramRequirement: '0 MB (Cloud)',
     ),
+    ExtensionInfo(
+      id: 'carefree-import',
+      name: 'Carefree Import',
+      modelName: 'Server ID',
+      description:
+          'Upload any audio file without needing Mapping & Reserve original metadata. Server identifies via audio fingerprint (AcoustID) or extracts ID3 tags. Requires Premium+ subscription.',
+      version: '1.0.0',
+      downloadUrl: '', // No download needed - uses backend API
+      capabilities: [
+        'fingerprint-id',
+        'id3-extraction',
+        'auto-metadata',
+        'no-spotify-required',
+      ],
+      iconType: IconType.ai,
+      ramRequirement: '0 MB (Cloud)',
+    ),
   ];
 
   /// Initialize the extension manager
@@ -238,7 +255,23 @@ class ExtensionManagerService {
   }
 
   /// Enable or disable an extension
+  /// Only one extension can be enabled at a time - enabling one disables others
   Future<void> setEnabled(String extensionId, bool enabled) async {
+    // If enabling, disable all other extensions first
+    if (enabled) {
+      for (final ext in availableExtensions) {
+        if (ext.id != extensionId) {
+          _extensionEnabled[ext.id] = false;
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('$_enabledKeyPrefix${ext.id}', false);
+          } catch (e) {
+            debugPrint('⚠️ Failed to persist extension state: $e');
+          }
+        }
+      }
+    }
+
     _extensionEnabled[extensionId] = enabled;
 
     // Persist the state
@@ -258,6 +291,10 @@ class ExtensionManagerService {
   /// For smart-match, it's always "available" since it's backend-based
   /// The backend will check Premium+ subscription
   bool get isSmartMatchAvailable => _extensionEnabled['smart-match'] ?? true;
+
+  /// Check if Carefree Import is enabled (uploads without Spotify ID)
+  bool get isCarefreeImportAvailable =>
+      _extensionEnabled['carefree-import'] ?? false;
 
   /// Enable smart match (called after API key is configured) - deprecated
   void enableSmartMatch() {

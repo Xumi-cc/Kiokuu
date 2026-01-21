@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'dart:io' if (dart.library.html) 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/shared_playlist_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/settings_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/api_service.dart';
 import 'services/discord_rpc_service.dart';
@@ -25,11 +27,51 @@ import 'utils/snackbar_utils.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // Global deep link handler
-late AppLinks _appLinks;
+AppLinks? _appLinks;
 String? _pendingShareToken;
+
+Future<void> _linuxDebugMediaKitHotRestartWorkaround() async {
+  if (!kDebugMode) return;
+  if (kIsWeb) return;
+  if (!Platform.isLinux) return;
+
+  // media_kit stores a process-scoped pointer-buffer address here in debug mode.
+  // On hot restart, reusing it can trigger stale-handle disposal and crash.
+  // We remove the file(s) before MediaKit initializes, forcing a fresh buffer.
+  const prefix = 'com.alexmercerind.media_kit.NativeReferenceHolder.';
+  int deleted = 0;
+
+  try {
+    await for (final entity in Directory.systemTemp.list(followLinks: false)) {
+      final name = entity.uri.pathSegments.isEmpty
+          ? ''
+          : entity.uri.pathSegments.last;
+      if (!name.startsWith(prefix)) continue;
+      try {
+        await entity.delete();
+        deleted++;
+      } catch (_) {
+        // Ignore failures; this is a debug-only best-effort cleanup.
+      }
+    }
+  } catch (e) {
+    debugPrint('media_kit: NativeReferenceHolder: Cleanup failed: $e');
+  }
+
+  if (deleted > 0) {
+    debugPrint(
+      'media_kit: NativeReferenceHolder: Deleted $deleted temp file(s) (hot restart workaround)',
+    );
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await _linuxDebugMediaKitHotRestartWorkaround();
+
+  // Initialize MediaKit first to handle native reference disposal before other plugins
+  MediaKit.ensureInitialized();
 
   // Set system UI overlay style - show status bar with light icons
   SystemChrome.setSystemUIOverlayStyle(
@@ -46,9 +88,6 @@ void main() async {
     overlays: SystemUiOverlay.values,
   );
 
-  // Initialize MediaKit
-  MediaKit.ensureInitialized();
-
   // Initialize window manager for desktop platforms (not on web)
   if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
     await windowManager.ensureInitialized();
@@ -64,6 +103,8 @@ void main() async {
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      // Small delay helps avoid ATK plug errors on some Linux distros
+      await Future.delayed(const Duration(milliseconds: 500));
       await windowManager.show();
       await windowManager.focus();
     });
@@ -81,7 +122,7 @@ void main() async {
   // Initialize Discord Rich Presence (restores enabled state from preferences)
   await DiscordRpcService.instance.initialize();
 
-  // Create player first
+  // Create player first (pure default to ensure stability)
   final player = Player();
 
   // Try to initialize audio service
@@ -95,15 +136,34 @@ void main() async {
   }
 
   // Set up session expiration handler
+  bool isNavigatingToAuth = false;
   ApiService.onSessionExpired = () {
+    if (isNavigatingToAuth || AuthScreen.isVisible) {
+      debugPrint(
+        '🔒 Session expired but AuthScreen already visible or navigating, ignoring.',
+      );
+      return;
+    }
+
+    isNavigatingToAuth = true;
     debugPrint('🔒 Session expired - logging out...');
+
     // Use post frame callback to avoid navigation during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (navigatorKey.currentState?.mounted == true) {
-        navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
-          (route) => false,
-        );
+        navigatorKey.currentState
+            ?.pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => const AuthScreen(),
+                settings: const RouteSettings(name: '/auth'),
+              ),
+              (route) => false,
+            )
+            .then((_) {
+              isNavigatingToAuth = false;
+            });
+      } else {
+        isNavigatingToAuth = false;
       }
     });
   };
@@ -113,7 +173,7 @@ void main() async {
 
   // Check if app was opened via deep link
   try {
-    final initialUri = await _appLinks.getInitialLink();
+    final initialUri = await _appLinks?.getInitialLink();
     if (initialUri != null) {
       _pendingShareToken = _extractShareToken(initialUri);
       debugPrint('🔗 App opened via deep link: $initialUri');
@@ -157,13 +217,17 @@ class KioKuuApp extends StatefulWidget {
 }
 
 class _KioKuuAppState extends State<KioKuuApp> with WidgetsBindingObserver {
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    _appLinks ??= AppLinks();
+
     // Listen for incoming deep links while app is running
-    _appLinks.uriLinkStream.listen((Uri uri) {
+    _linkSubscription = _appLinks!.uriLinkStream.listen((Uri uri) {
       debugPrint('🔗 Deep link received: $uri');
 
       // Check for Discord auth callback
@@ -204,6 +268,7 @@ class _KioKuuAppState extends State<KioKuuApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _linkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -332,6 +397,18 @@ class _KioKuuAppState extends State<KioKuuApp> with WidgetsBindingObserver {
           Theme.of(context).textTheme,
         ).apply(bodyColor: Colors.white, displayColor: Colors.white),
       ),
+      onGenerateRoute: (settings) {
+        if (settings.name == '/settings') {
+          SettingsCategory? category;
+          if (settings.arguments == 'subscription') {
+            category = SettingsCategory.subscription;
+          }
+          return MaterialPageRoute(
+            builder: (context) => SettingsScreen(initialCategory: category),
+          );
+        }
+        return null;
+      },
       home: const SplashScreen(),
     );
   }

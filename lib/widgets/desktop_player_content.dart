@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import '../providers/music_provider.dart';
 import '../services/api_service.dart';
 import 'add_to_playlist_sheet.dart';
+
 import 'equalizer_background.dart';
 import '../screens/lyrics_screen.dart';
 

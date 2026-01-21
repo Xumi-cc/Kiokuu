@@ -1,6 +1,6 @@
 pkgbase = kiokuu
 	pkgdesc = A beautiful music streaming and management application
-	pkgver = 0.9.2
+	pkgver = 0.9.3
 	pkgrel = 1
 	url = https://github.com/Xumi-cc/Kiokuu
 	arch = x86_64
@@ -15,7 +15,7 @@ pkgbase = kiokuu
 	conflicts = kiokuu-bin
 	conflicts = kiokuu-git
 	options = !strip
-	source = https://github.com/Xumi-cc/Kiokuu/releases/download/v0.9.2/kiokuu-0.9.2-linux-x64.tar.gz
+	source = https://github.com/Xumi-cc/Kiokuu/releases/download/v0.9.3/kiokuu-0.9.3-linux-x64.tar.gz
 	sha256sums = SKIP
 
 pkgname = kiokuu

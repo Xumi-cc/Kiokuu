@@ -28,6 +28,7 @@ import '../services/offline_storage_service.dart';
 import '../models/song.dart';
 import 'player_screen.dart';
 import 'auth_screen.dart';
+import '../widgets/playlist_song_actions_menu.dart';
 import 'friends_screen.dart';
 import 'playlist_screen.dart';
 import 'settings_screen.dart';
@@ -85,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showAllPlaylists = false;
   String? _userPhotoUrl;
   String? _userName;
+  String? _currentUserId;
 
   // Analytics data
   List<SongStats> _topSongs = [];
@@ -896,6 +898,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _likedSongs = (response['songs'] as List?) ?? [];
           _isLoading = false;
         });
+        _currentUserId = await _api.userId;
         debugPrint('Liked songs fetched: ${_likedSongs.length}');
       }
       // Generate ambient colors from top 3 liked songs
@@ -2221,9 +2224,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: _buildSidebarRecentItem(
                                   title: album.name,
                                   subtitle: album.artistName,
-                                  imageUrl: album.imagePath.isNotEmpty
-                                      ? album.imagePath
-                                      : null,
+                                  imageUrl:
+                                      album.imageUrl ??
+                                      (album.imagePath.isNotEmpty
+                                          ? album.imagePath
+                                          : null),
                                   isCircular: false,
                                   isSelected:
                                       _selectedPlaylistId == album.playlistId,
@@ -2252,9 +2257,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     child: _buildSidebarRecentItem(
                                       title: album.name,
                                       subtitle: album.artistName,
-                                      imageUrl: album.imagePath.isNotEmpty
-                                          ? album.imagePath
-                                          : null,
+                                      imageUrl:
+                                          album.imageUrl ??
+                                          (album.imagePath.isNotEmpty
+                                              ? album.imagePath
+                                              : null),
                                       isCircular: false,
                                       isSelected:
                                           _selectedPlaylistId ==
@@ -3839,9 +3846,13 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 color: const Color(0xFF181818),
-                image: imageUrl != null
+                image: imageUrl != null && imageUrl.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(imageUrl),
+                        image: NetworkImage(
+                          imageUrl.startsWith('http')
+                              ? imageUrl
+                              : '${ApiService.baseUrl}/$imageUrl',
+                        ),
                         fit: BoxFit.cover,
                         alignment: Alignment.center,
                         colorFilter: ColorFilter.mode(
@@ -4324,15 +4335,21 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 24),
             ],
 
-            Text(
-              _formatDuration(song['duration_ms'] ?? 0),
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTapDown: (details) {
+                PlaylistSongActionsMenu.show(
+                  context,
+                  songId: song['id'],
+                  songTitle: song['title'] ?? 'Unknown',
+                  uploadedBy: song['uploaded_by'],
+                  currentUserId: _currentUserId,
+                  onSongDeleted: () => _loadData(),
+                  menuPosition: details.globalPosition,
+                );
+              },
+              child: const Icon(Icons.more_horiz, color: Colors.grey, size: 20),
             ),
-
-            if (!isLargeScreen) ...[
-              const SizedBox(width: 16),
-              const Icon(Icons.more_vert, color: Colors.grey, size: 16),
-            ],
           ],
         ),
       ),

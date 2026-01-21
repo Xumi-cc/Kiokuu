@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../utils/snackbar_utils.dart';
 import 'artist_profile_screen.dart';
 import 'playlist_screen.dart';
+import '../widgets/playlist_song_actions_menu.dart';
 
 class ExploreScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -42,6 +43,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   List<Map<String, dynamic>> _songs = [];
   List<Map<String, dynamic>> _artists = [];
   List<Map<String, dynamic>> _albums = [];
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -61,6 +63,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Future<void> _loadInitialData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
+
+    _currentUserId = await _api.userId;
 
     try {
       final results = await Future.wait([
@@ -416,6 +420,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 song: _songs[index],
                 index: index,
                 onTap: () => _playSong(index),
+                currentUserId: _currentUserId,
+                onDeleted: () => _loadInitialData(),
               ),
               childCount: _songs.length,
             ),
@@ -506,6 +512,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 song: _songs[index],
                 index: index,
                 onTap: () => _playSong(index),
+                currentUserId: _currentUserId,
+                onDeleted: () => _loadInitialData(),
               ),
               childCount: _songs.length > 5 ? 5 : _songs.length,
             ),
@@ -698,12 +706,16 @@ class _SongTile extends StatefulWidget {
   final Map<String, dynamic> song;
   final int index;
   final VoidCallback onTap;
+  final String? currentUserId;
+  final VoidCallback onDeleted;
 
   const _SongTile({
     Key? key,
     required this.song,
     required this.index,
     required this.onTap,
+    this.currentUserId,
+    required this.onDeleted,
   }) : super(key: key);
 
   @override
@@ -840,19 +852,21 @@ class _SongTileState extends State<_SongTile> {
                   const SizedBox(width: 16),
 
                   // Menu
-                  if (_isHovering || isMobile)
-                    IconButton(
-                      icon: const Icon(Icons.more_horiz, color: Colors.white),
-                      onPressed: () {
-                        AppSnackbar.show(
-                          context,
-                          message: 'Added to queue',
-                          icon: Icons.queue_music,
-                        );
-                      },
-                    )
-                  else
-                    const SizedBox(width: 48),
+                  IconButton(
+                    icon: const Icon(Icons.more_horiz, color: Colors.white),
+                    onPressed: () {
+                      PlaylistSongActionsMenu.show(
+                        context,
+                        songId: widget.song['id'],
+                        songTitle: widget.song['title'] ?? 'Unknown',
+                        uploadedBy: widget.song['uploaded_by'],
+                        currentUserId: widget.currentUserId,
+                        onSongDeleted: widget.onDeleted,
+                        menuPosition:
+                            null, // Box will handle position if needed, or modal
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

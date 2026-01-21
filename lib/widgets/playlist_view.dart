@@ -288,12 +288,17 @@ class PlaylistView extends StatelessWidget {
     MusicProvider provider,
     Song song,
     int index,
-  ) {
+  ) async {
+    final currentUserId = await ApiService().userId;
+    final isUploader = song.uploadedBy == currentUserId;
+
+    if (!context.mounted) return;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -393,38 +398,38 @@ class PlaylistView extends StatelessWidget {
 
               // Actions
               _buildBottomSheetItem(
-                context,
+                sheetContext,
                 icon: Icons.play_arrow_rounded,
                 title: 'Play Now',
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   provider.playSongAtIndex(index);
                 },
               ),
               _buildBottomSheetItem(
-                context,
+                sheetContext,
                 icon: Icons.playlist_play_rounded,
                 title: 'Play Next',
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   // TODO: Implement Play Next
                 },
               ),
               _buildBottomSheetItem(
-                context,
+                sheetContext,
                 icon: Icons.playlist_add_rounded,
                 title: 'Add to Playlist',
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _showAddToPlaylistDialog(context, song);
                 },
               ),
               _buildBottomSheetItem(
-                context,
+                sheetContext,
                 icon: Icons.favorite_border_rounded,
                 title: 'Add to Favorites',
                 onTap: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   final api = ApiService();
                   final success = await api.likeSong(song.id);
                   if (context.mounted) {
@@ -440,15 +445,67 @@ class PlaylistView extends StatelessWidget {
               ),
               const Divider(color: Colors.white10, height: 32),
               _buildBottomSheetItem(
-                context,
+                sheetContext,
                 icon: Icons.delete_outline_rounded,
                 title: 'Remove from queue',
-                color: Colors.redAccent,
+                color: Colors.orangeAccent,
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   provider.removeSong(index);
                 },
               ),
+              if (isUploader)
+                _buildBottomSheetItem(
+                  sheetContext,
+                  icon: Icons.delete_forever_rounded,
+                  title: 'Delete song permanently',
+                  color: Colors.redAccent,
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        backgroundColor: const Color(0xFF1a1a1a),
+                        title: const Text(
+                          'Delete Song?',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        content: Text(
+                          'Are you sure you want to permanently delete "${song.title}"? This cannot be undone.',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.redAccent),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirmed == true && context.mounted) {
+                      final response = await ApiService().deleteSong(song.id);
+                      if (response.$1 && context.mounted) {
+                        provider.removeSongById(song.id);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Song deleted')),
+                        );
+                      } else if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(response.$2)));
+                      }
+                    }
+                  },
+                ),
               const SizedBox(height: 24),
             ],
           ),

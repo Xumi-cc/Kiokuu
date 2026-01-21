@@ -19,16 +19,20 @@ import 'google_auth_desktop_stub.dart'
 class GoogleAuthService {
   final _storage = const FlutterSecureStorage();
 
-  // Lazy initialization for GoogleSignIn to avoid errors on web without client ID
-  GoogleSignIn? _googleSignIn;
+  bool _googleSignInInitialized = false;
 
-  GoogleSignIn get googleSignIn {
-    _googleSignIn ??= GoogleSignIn(
-      scopes: ['email', 'profile'],
-      // serverClientId is NOT supported on web - web uses meta tag instead
+  GoogleSignIn get googleSignIn => GoogleSignIn.instance;
+
+  Future<void> _ensureGoogleSignInInitialized() async {
+    if (_googleSignInInitialized) return;
+
+    await googleSignIn.initialize(
+      // Web uses the <meta name="google-signin-client_id"> tag.
+      // Desktop/mobile can use serverClientId for backend token verification.
       serverClientId: kIsWeb ? null : AppConfig.googleWebClientId,
     );
-    return _googleSignIn!;
+
+    _googleSignInInitialized = true;
   }
 
   /// Check if we're running on a desktop platform
@@ -82,19 +86,24 @@ class GoogleAuthService {
   Future<Map<String, dynamic>> _signInMobile() async {
     try {
       print('=== GoogleAuth: Starting sign in ===');
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
-      if (googleUser == null) {
-        print('=== GoogleAuth: User cancelled ===');
-        return {'success': false, 'error': 'Sign in cancelled'};
+      await _ensureGoogleSignInInitialized();
+
+      // Clear any existing sign-in state first (fixes retry after failure)
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {
+        // Ignore errors from sign out (might not be signed in)
       }
 
-      print('=== GoogleAuth: Got user: ${googleUser.email} ===');
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      // google_sign_in 7.x: authenticate() is the interactive sign-in API.
+      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
+        scopeHint: const ['email', 'profile'],
+      );
 
-      // On web, we only get access token (no ID token)
-      // On mobile, we get both but prefer ID token
+      print('=== GoogleAuth: Got user: ${googleUser.email} ===');
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
       if (googleAuth.idToken != null) {
         print('=== GoogleAuth: Got ID token, sending to backend... ===');
         final result = await _sendToBackend(
@@ -105,24 +114,34 @@ class GoogleAuthService {
         );
         print('=== GoogleAuth: Backend result: $result ===');
         return result;
-      } else if (googleAuth.accessToken != null) {
-        // Web fallback: use access token
-        print('=== GoogleAuth: No ID token, using access token... ===');
-        final result = await _sendToBackendWithAccessToken(
-          accessToken: googleAuth.accessToken!,
-          email: googleUser.email,
-          displayName: googleUser.displayName ?? googleUser.email.split('@')[0],
-          photoUrl: googleUser.photoUrl,
-        );
-        print('=== GoogleAuth: Backend result: $result ===');
-        return result;
-      } else {
-        print('=== GoogleAuth: No tokens available! ===');
-        return {
-          'success': false,
-          'error': 'Failed to get authentication token',
-        };
       }
+
+      // Fallback: request an OAuth access token via authorization client.
+      // This may show additional UI depending on platform.
+      try {
+        final clientAuth = await googleUser.authorizationClient
+            .authorizationForScopes(const ['email', 'profile']);
+
+        if (clientAuth != null) {
+          print('=== GoogleAuth: No ID token, using access token... ===');
+          final result = await _sendToBackendWithAccessToken(
+            accessToken: clientAuth.accessToken,
+            email: googleUser.email,
+            displayName: googleUser.displayName ?? googleUser.email.split('@')[0],
+            photoUrl: googleUser.photoUrl,
+          );
+          print('=== GoogleAuth: Backend result: $result ===');
+          return result;
+        }
+      } catch (e) {
+        print('=== GoogleAuth: Failed to obtain access token: $e ===');
+      }
+
+      print('=== GoogleAuth: No tokens available! ===');
+      return {
+        'success': false,
+        'error': 'Failed to get authentication token',
+      };
     } catch (e) {
       print('=== GoogleAuth: Exception: $e ===');
       return {'success': false, 'error': _parseGoogleSignInError(e)};
@@ -341,8 +360,8 @@ class GoogleAuthService {
 
   /// Sign out from Google (clears local state)
   Future<void> signOut() async {
-    if (!kIsWeb && !isDesktop && _googleSignIn != null) {
-      await _googleSignIn!.signOut();
-    }
+    if (kIsWeb || isDesktop) return;
+    await _ensureGoogleSignInInitialized();
+    await GoogleSignIn.instance.signOut();
   }
 }

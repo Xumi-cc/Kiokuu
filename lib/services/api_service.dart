@@ -74,9 +74,13 @@ class ApiService {
 
   Future<String?> get _token async => await _storage.read(key: 'auth_token');
   Future<String?> get username async => await _storage.read(key: 'username');
+  Future<String?> get userId async => await _storage.read(key: 'user_id');
 
   // Helper to handle 401 responses
   Future<void> _handleUnauthorized() async {
+    final token = await _token;
+    if (token == null) return; // Already logged out or no token, ignore
+
     await _storage.deleteAll();
     onSessionExpired?.call();
   }
@@ -714,6 +718,32 @@ class ApiService {
     }
   }
 
+  /// Fetch an external playlist by URL (returns playlist metadata and tracks)
+  /// The source is abstracted - client just sees generic track data
+  Future<Map<String, dynamic>?> fetchExternalPlaylist(String url) async {
+    try {
+      final token = await _token;
+      final response = await _postWithRetry(
+        Uri.parse('$baseUrl/import/playlist'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'url': url}),
+      );
+
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching external playlist: $e');
+      return null;
+    }
+  }
+
   /// Search user's own uploaded songs
   /// Returns songs matching the query with pagination
   Future<Map<String, dynamic>> searchUserSongs(
@@ -935,6 +965,45 @@ class ApiService {
     } catch (e) {
       debugPrint('Error getting profile: $e');
       return null;
+    }
+  }
+
+  /// Generate a 6-digit Telegram activation code
+  Future<String?> generateTelegramCode() async {
+    try {
+      final token = await _token;
+      final response = await _postWithRetry(
+        Uri.parse('$baseUrl/user/telegram/code'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['code'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error generating telegram code: $e');
+      return null;
+    }
+  }
+
+  /// Unlink Telegram account
+  Future<bool> unlinkTelegram() async {
+    try {
+      final token = await _token;
+      final response = await _deleteWithRetry(
+        Uri.parse('$baseUrl/user/telegram'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) return false;
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error unlinking telegram: $e');
+      return false;
     }
   }
 
@@ -1177,23 +1246,66 @@ class ApiService {
 
       // Use TUS protocol for chunked resumable uploads (2MB chunks)
       // No fallback - Cloudflare doesn't like large single-request uploads
-      return await _uploadWithTus(spotifyId, filePath, onProgress: onProgress);
+      final (success, message, _) = await _uploadWithTus(
+        spotifyId,
+        filePath,
+        onProgress: onProgress,
+      );
+      return (success, message);
     } catch (e) {
       debugPrint('❌ Upload failed: $e');
       return (false, 'Upload error: $e');
     }
   }
 
-  /// TUS protocol upload with 2MB chunks (manual implementation)
-  /// Implements TUS 1.0.0 protocol for resumable uploads
-  Future<(bool, String)> _uploadWithTus(
-    String spotifyId,
+  /// Upload song without Spotify ID (auto-identification)
+  /// Server will try: 1) AcoustID fingerprint, 2) ID3 tag extraction
+  /// Returns (success, message, {song_id?, spotify_id?, requires_resubmit?})
+  Future<(bool, String, Map<String, dynamic>)> uploadSongAutoIdentify(
     String filePath, {
     void Function(double progress)? onProgress,
   }) async {
+    try {
+      final token = await _token;
+      if (token == null) {
+        return (false, 'Not authenticated', <String, dynamic>{});
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return (false, 'File not found', <String, dynamic>{});
+      }
+
+      final fileSize = await file.length();
+      final fileName = filePath.split('/').last;
+
+      debugPrint(
+        '📤 Starting auto-identify upload (TUS): $fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)',
+      );
+
+      return await _uploadWithTus(
+        null,
+        filePath,
+        onProgress: onProgress,
+        carefree: true,
+      );
+    } catch (e) {
+      debugPrint('❌ Auto-identify upload error: $e');
+      return (false, 'Upload error: $e', <String, dynamic>{});
+    }
+  }
+
+  /// TUS protocol upload with 2MB chunks (manual implementation)
+  /// Implements TUS 1.0.0 protocol for resumable uploads
+  Future<(bool, String, Map<String, dynamic>)> _uploadWithTus(
+    String? spotifyId,
+    String filePath, {
+    void Function(double progress)? onProgress,
+    bool carefree = false,
+  }) async {
     final token = await _token;
     if (token == null) {
-      return (false, 'Not authenticated');
+      return (false, 'Not authenticated', <String, dynamic>{});
     }
 
     final file = File(filePath);
@@ -1209,7 +1321,7 @@ class ApiService {
       String tusBaseUrl;
       try {
         debugPrint(
-          '🔑 Fetching upload server with token: ${token.substring(0, 20)}...',
+          '🔑 Fetching upload server with token: ${token.substring(0, 10)}...',
         );
         debugPrint('   Endpoint: $baseUrl/upload/server');
 
@@ -1224,8 +1336,15 @@ class ApiService {
           final serverData = jsonDecode(serverResponse.body);
           tusBaseUrl = serverData['server'] ?? '$baseUrl/tus/';
           debugPrint('🎯 Using upload server: $tusBaseUrl');
-          debugPrint('   Server ID: ${serverData['server_id']}');
-          debugPrint('   Load info: ${serverData['load_info']}');
+
+          if (carefree) {
+            // Carefree TUS uses /tus/auto/
+            tusBaseUrl = tusBaseUrl.replaceAll(
+              RegExp(r'/tus/?$'),
+              '/tus/auto/',
+            );
+            debugPrint('🎯 Switched to carefree TUS endpoint: $tusBaseUrl');
+          }
         } else {
           debugPrint(
             '⚠️ Failed to get upload server (${serverResponse.statusCode}): ${serverResponse.body}',
@@ -1245,7 +1364,7 @@ class ApiService {
           'Tus-Resumable': '1.0.0',
           'Upload-Length': fileSize.toString(),
           'Upload-Metadata':
-              'spotify_id ${base64Encode(utf8.encode(spotifyId))}, filename ${base64Encode(utf8.encode(fileName))}',
+              '${spotifyId != null ? 'spotify_id ${base64Encode(utf8.encode(spotifyId))}, ' : ''}filename ${base64Encode(utf8.encode(fileName))}',
           'Content-Type': 'application/offset+octet-stream',
         },
       );
@@ -1256,7 +1375,11 @@ class ApiService {
           final data = jsonDecode(createResponse.body);
           if (data['status'] == 'exists') {
             onProgress?.call(1.0);
-            return (true, 'Song already in library');
+            return (
+              true,
+              'Song already in library',
+              data as Map<String, dynamic>,
+            );
           }
         } catch (_) {}
       }
@@ -1343,7 +1466,23 @@ class ApiService {
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
 
-        if (response.statusCode != 204) {
+        if (response.statusCode == 200 &&
+            totalBytesUploaded + chunkData.length >= fileSize) {
+          // Upload complete and server returned results (our custom TUS logic)
+          try {
+            final data = jsonDecode(response.body);
+            onProgress?.call(1.0);
+            return (
+              true,
+              (data['message'] as String?) ?? 'Upload complete',
+              data as Map<String, dynamic>,
+            );
+          } catch (_) {
+            // Fallthrough to standard 204 handler
+          }
+        }
+
+        if (response.statusCode != 204 && response.statusCode != 200) {
           debugPrint(
             '⚠️ TUS chunk failed at offset $chunkOffset: ${response.statusCode}',
           );
@@ -1358,7 +1497,7 @@ class ApiService {
 
       onProgress?.call(1.0);
       debugPrint('✅ TUS upload complete: $fileName');
-      return (true, 'Song uploaded successfully!');
+      return (true, 'Song uploaded successfully!', <String, dynamic>{});
     } catch (e) {
       debugPrint('❌ TUS upload error: $e');
       rethrow;
@@ -1804,7 +1943,7 @@ class ApiService {
     return null;
   }
 
-  /// Create a Stripe checkout session for subscription
+  /// Create a Polar checkout session for subscription
   /// Returns checkout URL on success, null on failure
   Future<String?> createCheckoutSession({
     required String plan,
@@ -1895,5 +2034,349 @@ class ApiService {
       debugPrint('Error getting storage breakdown: $e');
     }
     return null;
+  }
+
+  // =====================
+  // Family Profiles
+  // =====================
+
+  /// Get all profiles in the user's family
+  Future<Map<String, dynamic>?> getProfiles() async {
+    try {
+      final token = await _token;
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/user/profiles'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error getting profiles: $e');
+    }
+    return null;
+  }
+
+  /// Switch to another profile in the family
+  /// Returns {token: "...", ...} on success, null on failure
+  Future<Map<String, dynamic>?> switchProfile(String profileId) async {
+    try {
+      final token =
+          await _token; // Use current token to authenticate the switch
+      final response = await _postWithRetry(
+        Uri.parse('$baseUrl/auth/switch-profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'profile_id': profileId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['token'] != null) {
+          // Update local session
+          await _storage.write(key: 'auth_token', value: data['token']);
+          await _storage.write(key: 'user_id', value: data['user_id']);
+          if (data['username'] != null) {
+            await _storage.write(key: 'username', value: data['username']);
+          }
+          if (data['photo_url'] != null) {
+            await _storage.write(key: 'photo_url', value: data['photo_url']);
+          }
+          return data;
+        }
+      } else {
+        debugPrint(
+          'Switch profile failed: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error switching profile: $e');
+    }
+    return null;
+  }
+
+  /// Allows a sub-account to become an independent account
+  Future<Map<String, dynamic>> leaveFamilyAccount(
+    String email,
+    String password,
+  ) async {
+    final token = await _token;
+    final response = await _postWithRetry(
+      Uri.parse('$baseUrl/user/leave-family'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final data = jsonDecode(response.body);
+      throw Exception(data['error'] ?? 'Failed to leave family account');
+    }
+  }
+
+  /// Create a new sub-profile
+  Future<Map<String, dynamic>?> createProfile({
+    required String username,
+    String? color,
+  }) async {
+    try {
+      final token = await _token;
+      final body = <String, dynamic>{'username': username};
+      if (color != null) body['color'] = color;
+
+      final response = await _postWithRetry(
+        Uri.parse('$baseUrl/user/profiles'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        return {'error': error['error'] ?? 'Failed to create profile'};
+      }
+    } catch (e) {
+      debugPrint('Error creating profile: $e');
+      return {'error': 'Network error'};
+    }
+  }
+
+  /// Delete a sub-profile (owner only)
+  Future<bool> deleteProfile(String profileId) async {
+    try {
+      final token = await _token;
+      final response = await _deleteWithRetry(
+        Uri.parse('$baseUrl/user/profiles/$profileId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (_checkUnauthorized(response)) return false;
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error deleting profile: $e');
+      return false;
+    }
+  }
+
+  // =====================
+  // Privacy Settings
+  // =====================
+
+  /// Update privacy settings (listening activity visibility)
+  Future<bool> updatePrivacySettings({
+    required bool listeningActivityVisible,
+  }) async {
+    try {
+      final token = await _token;
+      final response = await _putWithRetry(
+        Uri.parse('$baseUrl/user/privacy'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'listening_activity_visible': listeningActivityVisible,
+        }),
+      );
+      if (_checkUnauthorized(response)) return false;
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating privacy settings: $e');
+      return false;
+    }
+  }
+
+  /// Update current profile (username and/or color)
+  Future<bool> updateProfile({String? username, String? color}) async {
+    try {
+      final token = await _token;
+      final body = <String, dynamic>{};
+      if (username != null) body['username'] = username;
+      if (color != null) body['color'] = color;
+
+      if (body.isEmpty) return true;
+
+      final response = await _putWithRetry(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (_checkUnauthorized(response)) return false;
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating profile: $e');
+      return false;
+    }
+  }
+
+  // ======================= SONG METADATA EDITING =======================
+
+  /// Edit metadata for an unverified song without external IDs
+  /// Returns updated metadata or error message
+  Future<(bool, String, Map<String, dynamic>?)> editSongMetadata(
+    String songId, {
+    String? title,
+    String? artistName,
+    String? albumName,
+    int? durationMs,
+    String? imagePath,
+  }) async {
+    try {
+      final token = await _token;
+      if (token == null) {
+        return (false, 'Not authenticated', null);
+      }
+
+      // Build request body with non-null fields only
+      final body = <String, dynamic>{};
+      if (title != null && title.isNotEmpty) body['title'] = title;
+      if (artistName != null && artistName.isNotEmpty) {
+        body['artist_name'] = artistName;
+      }
+      if (albumName != null && albumName.isNotEmpty)
+        body['album_name'] = albumName;
+      if (durationMs != null && durationMs > 0)
+        body['duration_ms'] = durationMs;
+      if (imagePath != null && imagePath.isNotEmpty)
+        body['image_path'] = imagePath;
+
+      if (body.isEmpty) {
+        return (false, 'At least one metadata field is required', null);
+      }
+
+      final response = await _putWithRetry(
+        Uri.parse('$baseUrl/user/songs/$songId/metadata'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (_checkUnauthorized(response)) {
+        return (false, 'Authentication failed', null);
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final metadata = data['metadata'] as Map<String, dynamic>?;
+        return (
+          true,
+          data['message'] as String? ?? 'Metadata updated',
+          metadata,
+        );
+      } else if (response.statusCode == 403) {
+        return (
+          false,
+          'Cannot edit metadata for verified songs or songs with external IDs',
+          null,
+        );
+      } else if (response.statusCode == 404) {
+        return (false, 'Song not found', null);
+      } else {
+        try {
+          final data = jsonDecode(response.body);
+          return (
+            false,
+            data['error'] as String? ?? 'Failed to update metadata',
+            null,
+          );
+        } catch (_) {
+          return (
+            false,
+            'Failed to update metadata (${response.statusCode})',
+            null,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error editing song metadata: $e');
+      return (false, 'Error: $e', null);
+    }
+  }
+
+  /// Delete a song (only for songs uploaded by the user without external IDs)
+  /// Returns (success, message)
+  Future<(bool, String)> deleteSong(String songId) async {
+    try {
+      final token = await _token;
+      if (token == null) {
+        return (false, 'Not authenticated');
+      }
+
+      final response = await _deleteWithRetry(
+        Uri.parse('$baseUrl/user/songs/$songId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) {
+        return (false, 'Authentication failed');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return (
+          true,
+          data['message'] as String? ?? 'Song deleted successfully',
+        );
+      } else if (response.statusCode == 403) {
+        return (
+          false,
+          'Cannot delete this song (only uploader can delete, and song must not have external IDs)',
+        );
+      } else if (response.statusCode == 404) {
+        return (false, 'Song not found');
+      } else {
+        try {
+          final data = jsonDecode(response.body);
+          return (false, data['error'] as String? ?? 'Failed to delete song');
+        } catch (_) {
+          return (false, 'Failed to delete song (${response.statusCode})');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error deleting song: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
+  /// Get current user's custom metadata for a song
+  /// Returns metadata map or null if no custom metadata
+  Future<Map<String, dynamic>?> getSongMetadata(String songId) async {
+    try {
+      final token = await _token;
+      if (token == null) return null;
+
+      final response = await _getWithRetry(
+        Uri.parse('$baseUrl/user/songs/$songId/metadata'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (_checkUnauthorized(response)) return null;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['metadata'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting song metadata: $e');
+      return null;
+    }
   }
 }

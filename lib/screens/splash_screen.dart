@@ -14,9 +14,12 @@ import 'auth_screen.dart';
 import 'home_screen.dart';
 import 'permission_screen.dart';
 import 'force_update_screen.dart';
+import 'profile_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  final bool skipProfileSelection;
+
+  const SplashScreen({super.key, this.skipProfileSelection = false});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -185,11 +188,37 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       if (isValidSession) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => HomeScreen(isOfflineMode: isOfflineMode),
-          ),
-        );
+        // Check for profiles if online (unless skipping profile selection)
+        bool showProfileSelection = false;
+        if (!isOfflineMode && !widget.skipProfileSelection) {
+          try {
+            final apiService = ApiService();
+            final profilesData = await apiService.getProfiles();
+            if (profilesData != null) {
+              final profiles = profilesData['profiles'] as List?;
+              if (profiles != null && profiles.length > 1) {
+                showProfileSelection = true;
+              }
+            }
+          } catch (e) {
+            print('Failed to check profiles: $e');
+          }
+        }
+
+        if (showProfileSelection) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) =>
+                  const ProfileSelectionScreen(isInitialSelection: true),
+            ),
+          );
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => HomeScreen(isOfflineMode: isOfflineMode),
+            ),
+          );
+        }
 
         // Show optional update dialog after a short delay
         if (_pendingUpdateInfo != null) {
@@ -202,7 +231,10 @@ class _SplashScreenState extends State<SplashScreen>
       } else {
         // Token invalid or missing - go to auth screen
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
+          MaterialPageRoute(
+            builder: (_) => const AuthScreen(),
+            settings: const RouteSettings(name: '/auth'),
+          ),
         );
       }
     }
@@ -341,7 +373,10 @@ class _AuthCheckScreenState extends State<_AuthCheckScreen> {
         );
       } else {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
+          MaterialPageRoute(
+            builder: (_) => const AuthScreen(),
+            settings: const RouteSettings(name: '/auth'),
+          ),
         );
       }
     }

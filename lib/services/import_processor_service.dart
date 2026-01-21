@@ -102,12 +102,9 @@ class ImportProcessorService {
 
   /// Queue files for import processing
   Future<void> queueFiles(List<File> files) async {
-    // Check if AI extension is enabled
-    if (!isAIAvailable) {
-      debugPrint('🚫 Smart Match disabled - ignoring ${files.length} files');
-      return;
-    }
-
+    // Process files regardless of AI availability
+    // If AI is available, use Smart Match; otherwise use Carefree Import (auto-identify)
+    
     final persistence = ImportTaskPersistence.instance;
 
     for (final file in files) {
@@ -190,10 +187,6 @@ class ImportProcessorService {
   /// Process the queue of import tasks
   Future<void> _processQueue() async {
     if (_isProcessing) return;
-    if (!isAIAvailable) {
-      debugPrint('⚠️ Cannot process - AI extension not installed');
-      return;
-    }
 
     _isProcessing = true;
 
@@ -238,10 +231,13 @@ class ImportProcessorService {
         debugPrint(
           '🎯 Fingerprint match: ${fingerprintResult.title} - ${fingerprintResult.artist}',
         );
-      } else {
-        // Fallback to AI matching
+      } else if (isAIAvailable) {
+        // Only try AI matching if extension is available
         debugPrint('🤖 Fingerprint not found, trying AI matching...');
         await _matchWithAI(task);
+      } else {
+        // AI not available - skip matching, will use auto-identify (carefree import)
+        debugPrint('⏭️ Smart Match disabled - will use auto-identify');
       }
 
       // Step 3: Check confidence and decide whether to auto-upload or ask for review
@@ -298,7 +294,36 @@ class ImportProcessorService {
         }
       }
 
-      // No match found - show review so user can manually search
+      // No match found
+      if (!isAIAvailable) {
+        // AI disabled - upload via auto-identify (Carefree Import)
+        debugPrint('📤 No match found - uploading via auto-identify');
+        task.status = ImportStatus.uploading;
+        _onProgress?.call(_tasks);
+        log.uploadStarted(task.fileName);
+
+        final success = await _uploadFile(task);
+
+        if (success) {
+          task.status = ImportStatus.completed;
+          log.uploadComplete(task.fileName);
+          log.importComplete(task.fileName);
+          await _moveToProcessed(task);
+        } else {
+          task.status = ImportStatus.failed;
+          task.errorMessage ??= 'Upload failed';
+          log.uploadFailed(
+            task.fileName,
+            task.errorMessage ?? 'Unknown error',
+          );
+        }
+
+        _onProgress?.call(_tasks);
+        _onComplete?.call(task, task.status == ImportStatus.completed);
+        return;
+      }
+
+      // Show review so user can manually search
       debugPrint('❌ No AI match found - requesting user input');
       task.status = ImportStatus.awaitingReview;
       _onProgress?.call(_tasks);
@@ -566,16 +591,46 @@ class ImportProcessorService {
   }
 
   /// Upload the file to the server
+  /// Falls back to auto-identify upload if no Spotify ID is available (requires Carefree Import extension)
   Future<bool> _uploadFile(ImportTask task) async {
-    if (task.spotifyId == null) {
-      task.errorMessage = 'No Spotify ID available';
-      return false;
-    }
-
     try {
       final apiService = ApiService();
-      final result = await apiService.uploadSongWithProgress(
-        task.spotifyId!,
+      final extManager = ExtensionManagerService.instance;
+
+      // If we have a Spotify ID, use the normal upload
+      if (task.spotifyId != null && task.spotifyId!.isNotEmpty) {
+        final result = await apiService.uploadSongWithProgress(
+          task.spotifyId!,
+          task.file.path,
+          onProgress: (progress) {
+            task.uploadProgress = progress;
+            _onProgress?.call(_tasks);
+          },
+        );
+
+        final (success, message) = result;
+        if (!success) {
+          task.errorMessage = message;
+        }
+
+        debugPrint(
+          success
+              ? '✅ Uploaded: ${task.fileName}'
+              : '❌ Upload failed: $message',
+        );
+        return success;
+      }
+
+      // No Spotify ID - check if Carefree Import is enabled
+      if (!extManager.isCarefreeImportAvailable) {
+        task.errorMessage = 'No Spotify ID and Carefree Import not enabled';
+        debugPrint('❌ No Spotify ID and Carefree Import extension is disabled');
+        return false;
+      }
+
+      // No Spotify ID - try auto-identify upload (uses file metadata)
+      debugPrint('🔍 No Spotify ID, trying auto-identify upload...');
+      final (success, message, data) = await apiService.uploadSongAutoIdentify(
         task.file.path,
         onProgress: (progress) {
           task.uploadProgress = progress;
@@ -583,15 +638,36 @@ class ImportProcessorService {
         },
       );
 
-      final (success, message) = result;
-      if (!success) {
-        task.errorMessage = message;
+      if (success) {
+        // Check if server identified a Spotify ID (requires resubmit)
+        final requiresResubmit = data['requires_resubmit'] as bool? ?? false;
+        if (requiresResubmit) {
+          final spotifyId = data['spotify_id'] as String?;
+          if (spotifyId != null && spotifyId.isNotEmpty) {
+            // Server found a Spotify ID via fingerprint - resubmit with it
+            debugPrint(
+              '🎯 Server identified Spotify ID: $spotifyId, resubmitting...',
+            );
+            task.spotifyId = spotifyId;
+            return await _uploadFile(task); // Recursive call with Spotify ID
+          }
+        }
+
+        debugPrint('✅ Auto-identify uploaded: ${task.fileName}');
+        return true;
       }
 
-      debugPrint(
-        success ? '✅ Uploaded: ${task.fileName}' : '❌ Upload failed: $message',
-      );
-      return success;
+      // Check if it failed due to missing metadata
+      final missingFields = data['missing_fields'] as List?;
+      if (missingFields != null && missingFields.isNotEmpty) {
+        task.errorMessage = 'File missing: ${missingFields.join(", ")}';
+        debugPrint('❌ Missing metadata: ${missingFields.join(", ")}');
+      } else {
+        task.errorMessage = message;
+        debugPrint('❌ Auto-identify upload failed: $message');
+      }
+
+      return false;
     } catch (e) {
       debugPrint('⚠️ Upload failed: $e');
       task.errorMessage = e.toString();

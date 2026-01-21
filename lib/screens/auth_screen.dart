@@ -6,9 +6,13 @@ import '../services/api_service.dart';
 import '../providers/music_provider.dart';
 import '../utils/snackbar_utils.dart';
 import 'home_screen.dart';
+import 'profile_selection_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
+
+  /// Global flag to check if auth screen is currently visible
+  static bool isVisible = false;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -29,11 +33,54 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    AuthScreen.isVisible = true;
+  }
+
+  @override
   void dispose() {
+    AuthScreen.isVisible = false;
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// Check for profiles and navigate accordingly
+  Future<void> _navigateAfterLogin() async {
+    try {
+      final profilesData = await _api.getProfiles();
+      final hasProfiles =
+          profilesData != null &&
+          (profilesData['profiles'] as List?)?.isNotEmpty == true;
+
+      if (!mounted) return;
+
+      context.read<MusicProvider>().refreshAuthToken();
+
+      if (hasProfiles) {
+        // Family account - show profile selection (not management)
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) =>
+                const ProfileSelectionScreen(isInitialSelection: true),
+          ),
+        );
+      } else {
+        // Regular account - go to home
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
+    } catch (e) {
+      // On error, default to home screen
+      if (!mounted) return;
+      context.read<MusicProvider>().refreshAuthToken();
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    }
   }
 
   void _toggleAuthMode() {
@@ -75,10 +122,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (success && _isLogin) {
         if (mounted) {
-          context.read<MusicProvider>().refreshAuthToken();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
+          await _navigateAfterLogin();
         }
       } else if (!success) {
         if (mounted) {
@@ -109,10 +153,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     if (result['success'] == true) {
       if (mounted) {
-        context.read<MusicProvider>().refreshAuthToken();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        await _navigateAfterLogin();
       }
     } else {
       if (mounted) {
@@ -130,10 +171,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     if (result['success'] == true) {
       if (mounted) {
-        context.read<MusicProvider>().refreshAuthToken();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        await _navigateAfterLogin();
       }
     } else if (result['pending'] == true) {
       // Desktop flow - waiting for browser callback

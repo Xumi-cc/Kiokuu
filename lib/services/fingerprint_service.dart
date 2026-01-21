@@ -76,7 +76,7 @@ class FingerprintService {
 
       // Send with timeout (fingerprinting can take a few seconds)
       final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 60),
+        const Duration(seconds: 120),
       );
       final response = await http.Response.fromStream(streamedResponse);
 

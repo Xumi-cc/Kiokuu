@@ -22,6 +22,7 @@ import '../services/offline_storage_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'artist_profile_screen.dart';
 import '../services/analytics_service.dart';
+import '../widgets/edit_song_metadata_sheet.dart';
 import '../widgets/skeleton_loader.dart';
 
 /// Full-screen playlist library that shows all user playlists
@@ -1577,6 +1578,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   bool _isLoading = true;
   bool _isLiked = false;
   String _username = '';
+  String _currentUserId = '';
   String? _photoUrl;
   bool _isDownloading = false;
   int _downloadedCount = 0;
@@ -1608,11 +1610,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final results = await Future.wait([
       _storage.read(key: 'username'),
       _storage.read(key: 'photo_url'),
+      _storage.read(key: 'user_id'),
     ]);
     if (mounted) {
       setState(() {
         _username = results[0] ?? '';
         _photoUrl = results[1];
+        _currentUserId = results[2] ?? '';
       });
     }
   }
@@ -2218,6 +2222,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             duration: ps.duration,
             genres: ps.genres,
             tags: ps.tags,
+            uploadedBy: ps.uploadedBy,
             source: ps.source,
           ),
         )
@@ -2253,6 +2258,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             duration: ps.duration,
             genres: ps.genres,
             tags: ps.tags,
+            uploadedBy: ps.uploadedBy,
             source: ps.source,
           ),
         )
@@ -2355,9 +2361,72 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 // TODO: Navigate to edit
               },
             ),
+            const Divider(color: Color(0xFF404040), height: 16),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Delete Playlist',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeletePlaylistDialog(playlist);
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeletePlaylistDialog(Playlist playlist) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF282828),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Playlist?',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${playlist.name}"? This action cannot be undone.',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              AppSnackbar.show(
+                context,
+                message: 'Deleting playlist...',
+                icon: Icons.hourglass_empty,
+              );
+
+              final success = await _api.deletePlaylist(playlist.id);
+              if (success && mounted) {
+                AppSnackbar.show(
+                  context,
+                  message: 'Playlist deleted successfully',
+                  icon: Icons.check_circle,
+                );
+                Navigator.pop(context); // Go back to playlist list
+              } else if (mounted) {
+                AppSnackbar.show(
+                  context,
+                  message: 'Failed to delete playlist',
+                  icon: Icons.error_outline,
+                );
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
   }
@@ -4196,44 +4265,82 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 }
                               }
                               break;
+                            case 'delete':
+                              _showDeleteSongDialog(song);
+                              break;
+                            case 'edit':
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => EditSongMetadataSheet(
+                                  songId: song.id,
+                                  initialTitle: song.title,
+                                  initialArtist: song.artistName,
+                                  initialAlbum: song.albumName,
+                                  onMetadataUpdated: _loadPlaylist,
+                                ),
+                              );
+                              break;
                           }
                         },
-                        itemBuilder: (context) => [
-                          PopupMenuItem<String>(
-                            value: 'queue',
-                            child: Row(
-                              children: const [
-                                Icon(
-                                  Icons.queue_music,
-                                  color: Colors.grey,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Add to Queue',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ],
+                        itemBuilder: (context) {
+                          final isCurrentUserUploader =
+                              song.uploadedBy == _currentUserId;
+
+                          return [
+                            const PopupMenuItem<String>(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.edit_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Edit Metadata',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'add_to_playlist',
-                            child: Row(
-                              children: const [
-                                Icon(
-                                  Icons.playlist_add,
-                                  color: Colors.grey,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Add to Playlist',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ],
+                            const PopupMenuDivider(),
+                            PopupMenuItem<String>(
+                              value: 'queue',
+                              child: Row(
+                                children: const [
+                                  Icon(
+                                    Icons.queue_music,
+                                    color: Colors.grey,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Add to Queue',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          if (!_playlist!.isSystem)
+                            PopupMenuItem<String>(
+                              value: 'add_to_playlist',
+                              child: Row(
+                                children: const [
+                                  Icon(
+                                    Icons.playlist_add,
+                                    color: Colors.grey,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Add to Playlist',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
                             PopupMenuItem<String>(
                               value: 'remove',
                               child: Row(
@@ -4251,7 +4358,28 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 ],
                               ),
                             ),
-                        ],
+                            if (isCurrentUserUploader) ...[
+                              const PopupMenuDivider(),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Row(
+                                  children: const [
+                                    Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.redAccent,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'Delete Song',
+                                      style: TextStyle(color: Colors.redAccent),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ];
+                        },
                       ),
                     ),
                   ],
@@ -4475,6 +4603,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                                   ? '${ApiService.baseUrl}/${ps.coverPath}'
                                                   : null),
                                           duration: ps.duration,
+                                          uploadedBy: ps.uploadedBy,
                                           source: ps.source,
                                         ),
                                       )
@@ -4542,57 +4671,116 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               icon: Icons.person,
                             );
                             break;
+                          case 'delete':
+                            _showDeleteSongDialog(song);
+                            break;
+                          case 'edit':
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => EditSongMetadataSheet(
+                                songId: song.id,
+                                initialTitle: song.title,
+                                initialArtist: song.artistName,
+                                initialAlbum: song.albumName,
+                                onMetadataUpdated: _loadPlaylist,
+                              ),
+                            );
+                            break;
                         }
                       },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'queue',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.queue_music,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Add to Queue',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
+                      itemBuilder: (context) {
+                        final isCurrentUserUploader =
+                            song.uploadedBy == _currentUserId;
+                        return [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 12),
+                                const Text(
+                                  'Edit Metadata',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'remove',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.remove_circle_outline,
-                                color: Colors.redAccent,
-                                size: 20,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Remove from Playlist',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'queue',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.queue_music,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 12),
+                                const Text(
+                                  'Add to Queue',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'artist',
-                          child: Row(
-                            children: [
-                              Icon(Icons.person, color: Colors.white, size: 20),
-                              SizedBox(width: 12),
-                              Text(
-                                'View Artist',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.remove_circle_outline,
+                                  color: Colors.redAccent,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 12),
+                                const Text(
+                                  'Remove from Playlist',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          const PopupMenuItem(
+                            value: 'artist',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.person,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 12),
+                                const Text(
+                                  'View Artist',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isCurrentUserUploader) ...[
+                            const PopupMenuDivider(),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_outline, color: Colors.red),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Delete song',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ];
+                      },
                     ),
                   ],
                 ),
@@ -4633,23 +4821,22 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         child: const Icon(Icons.music_note, color: Colors.grey),
                       ),
               ),
-              // Equalizer overlay for currently playing song
               if (isCurrentlySelected)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    width: 48,
-                    height: 48,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.6),
-                    child: Center(
-                      child: isPlaying
-                          ? _buildMiniEqualizer()
-                          : const Icon(
-                              Icons.pause,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Center(
+                    child: isPlaying
+                        ? _buildMiniEqualizer()
+                        : const Icon(
+                            Icons.pause,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                   ),
                 ),
             ],
@@ -4660,20 +4847,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               color: isCurrentlySelected
                   ? Colors.white
                   : Colors.white.withValues(alpha: 0.7),
-              fontWeight: isCurrentlySelected
-                  ? FontWeight.bold
-                  : FontWeight.w500,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
             song.artistName,
-            style: TextStyle(
-              color: isCurrentlySelected
-                  ? Colors.white.withValues(alpha: 0.8)
-                  : Colors.white.withValues(alpha: 0.4),
-            ),
+            style: TextStyle(color: Colors.grey[500], fontSize: 13),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -4686,36 +4868,147 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               ),
               const SizedBox(width: 8),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: Colors.grey),
+                icon: Icon(Icons.more_horiz, color: Colors.grey[600]),
                 color: const Color(0xFF282828),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'remove',
-                    child: Row(
-                      children: [
-                        Icon(Icons.remove_circle_outline, color: Colors.red),
-                        SizedBox(width: 12),
-                        Text(
-                          'Remove from playlist',
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                onSelected: (value) async {
+                  if (value == 'queue') {
+                    // Similar to mobile queue logic
+                    Provider.of<MusicProvider>(
+                      context,
+                      listen: false,
+                    ).addSongToQueue(
+                      Song(
+                        id: song.id,
+                        title: song.title,
+                        artist: song.artistName,
+                        album: song.albumName,
+                        filePath: song.streamUrl ?? '',
+                        streamUrl: song.streamUrl,
+                        coverUrl: song.coverUrl,
+                        artworkPath:
+                            song.coverUrl ??
+                            (song.coverPath != null
+                                ? '${ApiService.baseUrl}/${song.coverPath}'
+                                : null),
+                        duration: song.duration,
+                        uploadedBy: song.uploadedBy,
+                        source: song.source,
+                      ),
+                    );
+                    AppSnackbar.success(context, 'Added to queue');
+                  } else if (value == 'edit') {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => EditSongMetadataSheet(
+                        songId: song.id,
+                        initialTitle: song.title,
+                        initialArtist: song.artistName,
+                        initialAlbum: song.albumName,
+                        onMetadataUpdated: _loadPlaylist,
+                      ),
+                    );
+                  } else if (value == 'remove') {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF282828),
+                        title: const Text(
+                          'Remove from Playlist',
                           style: TextStyle(color: Colors.white),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-                onSelected: (value) async {
-                  if (value == 'remove') {
-                    final success = await _api.removeSongFromPlaylist(
-                      widget.playlistId,
-                      song.id,
+                        content: Text(
+                          'Remove "${song.title}" from this playlist?',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text(
+                              'Remove',
+                              style: TextStyle(color: Colors.redAccent),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
-                    if (success && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Song removed')),
+                    if (confirmed == true && mounted) {
+                      final success = await ApiService().removeSongFromPlaylist(
+                        widget.playlistId,
+                        song.id,
                       );
-                      _loadPlaylist();
+                      if (success) {
+                        _loadPlaylist();
+                        AppSnackbar.success(
+                          context,
+                          'Song removed from playlist',
+                        );
+                      }
                     }
+                  } else if (value == 'delete') {
+                    _showDeleteSongDialog(song);
                   }
+                },
+                itemBuilder: (context) {
+                  // Check if current user is the uploader (compare UUIDs)
+                  final isCurrentUserUploader =
+                      song.uploadedBy == _currentUserId;
+
+                  return [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.edit_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Edit Metadata',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'queue',
+                      child: Text(
+                        'Add to Queue',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Text(
+                        'Remove from Playlist',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    if (isCurrentUserUploader) ...[
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text(
+                          'Delete Song',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ];
                 },
               ),
             ],
@@ -4746,6 +5039,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             duration: ps.duration,
             genres: ps.genres,
             tags: ps.tags,
+            uploadedBy: ps.uploadedBy,
             source: ps.source,
           ),
         )
@@ -4763,6 +5057,66 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final minutes = durationSec ~/ 60;
     final seconds = durationSec % 60;
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _showDeleteSongDialog(dynamic song) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF282828),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Song?',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete "${song.title}"? This action cannot be undone.',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+
+              if (!mounted) return;
+
+              AppSnackbar.show(
+                context,
+                message: 'Deleting song...',
+                icon: Icons.hourglass_empty,
+              );
+
+              final (success, message) = await _api.deleteSong(song.id);
+              if (success && mounted) {
+                AppSnackbar.show(
+                  context,
+                  message: message,
+                  icon: Icons.check_circle,
+                );
+                _loadPlaylist();
+                if (mounted) {
+                  Provider.of<MusicProvider>(
+                    context,
+                    listen: false,
+                  ).removeSongById(song.id);
+                }
+              } else if (mounted) {
+                AppSnackbar.show(
+                  context,
+                  message: message,
+                  icon: Icons.error_outline,
+                );
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMiniEqualizer() {

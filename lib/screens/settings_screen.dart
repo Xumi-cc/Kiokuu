@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:crop_your_image/crop_your_image.dart';
 import '../services/api_service.dart';
 import '../services/discord_rpc_service.dart';
 import '../services/extension_manager_service.dart';
@@ -25,13 +27,17 @@ import '../services/import_log_service.dart';
 import '../services/storage_management_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../widgets/ai_match_review_sheet.dart';
+import '../widgets/import_playlist_sheet.dart';
 import '../widgets/custom_title_bar.dart';
 import '../config/app_config.dart';
 import '../services/extension_runtime_service.dart';
+import 'profile_selection_screen.dart';
+import '../models/profile.dart';
 import '../models/extension_model.dart';
 import '../providers/music_provider.dart';
 import 'package:provider/provider.dart';
 import 'auth_screen.dart';
+import 'splash_screen.dart';
 
 // --- Models ---
 
@@ -42,6 +48,7 @@ enum SettingsCategory {
   connections,
   extensions,
   autoImport,
+  importPlaylist,
   pendingReviews,
   logs,
   account,
@@ -65,6 +72,8 @@ extension SettingsCategoryExtension on SettingsCategory {
         return 'Extensions';
       case SettingsCategory.autoImport:
         return 'Auto Import';
+      case SettingsCategory.importPlaylist:
+        return 'Import Playlist';
       case SettingsCategory.pendingReviews:
         return 'Pending Reviews';
       case SettingsCategory.logs:
@@ -90,6 +99,8 @@ extension SettingsCategoryExtension on SettingsCategory {
         return Icons.extension;
       case SettingsCategory.autoImport:
         return Icons.cloud_upload_outlined;
+      case SettingsCategory.importPlaylist:
+        return Icons.playlist_add;
       case SettingsCategory.pendingReviews:
         return Icons.rate_review_outlined;
       case SettingsCategory.logs:
@@ -103,17 +114,24 @@ extension SettingsCategoryExtension on SettingsCategory {
 // --- Main Settings Screen ---
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final SettingsCategory? initialCategory;
+
+  const SettingsScreen({super.key, this.initialCategory});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  SettingsCategory _selectedCategory = SettingsCategory.autoImport;
+  late SettingsCategory _selectedCategory;
   bool _isMobile = false;
 
   @override
+  void initState() {
+    super.initState();
+    _selectedCategory = widget.initialCategory ?? SettingsCategory.autoImport;
+  }
+
   Widget build(BuildContext context) {
     // Check screen width for responsiveness
     _isMobile = MediaQuery.of(context).size.width < 800;
@@ -164,31 +182,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Expanded(
           child: ListView(
             padding: EdgeInsets.zero,
-            children: SettingsCategory.values
-                .where((c) => c != SettingsCategory.subscription)
-                .map((category) {
-                  return ListTile(
-                    leading: Icon(category.icon, color: Colors.grey[400]),
-                    title: Text(
-                      category.label,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+            children: SettingsCategory.values.map((category) {
+              return ListTile(
+                leading: Icon(category.icon, color: Colors.grey[400]),
+                title: Text(
+                  category.label,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => _MobileDetailScreen(category: category),
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey,
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              _MobileDetailScreen(category: category),
-                        ),
-                      );
-                    },
                   );
-                })
-                .toList(),
+                },
+              );
+            }).toList(),
           ),
         ),
 
@@ -247,56 +258,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  children: SettingsCategory.values
-                      .where((c) => c != SettingsCategory.subscription)
-                      .map((category) {
-                        final isSelected = category == _selectedCategory;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Material(
-                            color: isSelected
-                                ? Colors.white.withOpacity(0.1)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(6),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(6),
-                              onTap: () =>
-                                  setState(() => _selectedCategory = category),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
+                  children: SettingsCategory.values.map((category) {
+                    final isSelected = category == _selectedCategory;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Material(
+                        color: isSelected
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () =>
+                              setState(() => _selectedCategory = category),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  category.icon,
+                                  size: 18,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.grey[500],
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      category.icon,
-                                      size: 18,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.grey[500],
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      category.label,
-                                      style: GoogleFonts.inter(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.grey[400],
-                                        fontSize: 14,
-                                        fontWeight: isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(width: 12),
+                                Text(
+                                  category.label,
+                                  style: GoogleFonts.inter(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.grey[400],
+                                    fontSize: 14,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
-                        );
-                      })
-                      .toList(),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
 
@@ -373,6 +381,15 @@ class _SettingsContentState extends State<_SettingsContent> {
   Map<String, dynamic>? _plans;
   bool _isLoadingSubscription = true;
   bool _isLoggingOut = false;
+  bool _isOwner =
+      true; // Default to true to hide Leave Family button by default
+  bool _isLoadingProfile = true;
+
+  // Telegram state
+  bool _isTelegramLinked = false;
+  String? _telegramCode;
+  bool _isGeneratingCode = false;
+  String? _telegramId;
 
   // Timer for refreshing pending reviews
   Timer? _refreshTimer;
@@ -382,8 +399,107 @@ class _SettingsContentState extends State<_SettingsContent> {
     super.initState();
     _refreshState();
     _loadSubscription();
+    _loadProfile();
     _loadAppVersion();
     _startRefreshTimerIfNeeded();
+  }
+
+  Future<void> _loadProfile() async {
+    if (!mounted) return;
+    setState(() => _isLoadingProfile = true);
+
+    try {
+      final profile = await _api.getProfile();
+      if (mounted) {
+        setState(() {
+          // backend returns 'is_profile' (true if it has a parent)
+          final isSubProfile = profile?['is_profile'] as bool? ?? false;
+          _isOwner = !isSubProfile;
+          _isTelegramLinked = profile?['telegram_id'] != null;
+          _telegramId = profile?['telegram_id']?.toString();
+          _isLoadingProfile = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile in settings: $e');
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _generateTelegramCode() async {
+    setState(() => _isGeneratingCode = true);
+    try {
+      final code = await _api.generateTelegramCode();
+      if (mounted) {
+        setState(() {
+          _telegramCode = code;
+          _isGeneratingCode = false;
+        });
+
+        if (code == null) {
+          AppSnackbar.error(context, 'Failed to generate code');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isGeneratingCode = false);
+        AppSnackbar.error(context, 'Error: $e');
+      }
+    }
+  }
+
+  Future<void> _unlinkTelegram() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Unlink Telegram',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Are you sure you want to decouple your Telegram account? You won\'t be able to upload songs via the bot until you link it again.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Unlink',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final success = await _api.unlinkTelegram();
+      if (mounted) {
+        if (success) {
+          AppSnackbar.success(context, 'Telegram account unlinked');
+          _loadProfile(); // Refresh status
+        } else {
+          AppSnackbar.error(context, 'Failed to unlink account');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(context, 'Error: $e');
+      }
+    }
   }
 
   @override
@@ -520,6 +636,8 @@ class _SettingsContentState extends State<_SettingsContent> {
   }
 
   Future<void> _logout() async {
+    if (_isLoggingOut) return; // Prevent double logout
+
     setState(() => _isLoggingOut = true);
 
     // Clear music playback state before logout
@@ -528,13 +646,151 @@ class _SettingsContentState extends State<_SettingsContent> {
     await musicProvider.clearSavedPlaybackState();
 
     await _api.logout();
+
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const AuthScreen()),
-        (route) => false,
+      // Use pushNamedAndRemoveUntil with predicate to clear entire stack
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const AuthScreen(),
+          settings: const RouteSettings(name: '/auth'),
+        ),
+        (route) => false, // Remove all previous routes
       );
     }
+  }
+
+  void _showLeaveFamilyDialog() {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool isPending = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF121212),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.white.withOpacity(0.1)),
+          ),
+          title: const Text(
+            'Leave Family Account',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Provide new credentials to become an independent account. You will keep your library and history.',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: emailController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'New Email',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isPending ? null : () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: isPending
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      final password = passwordController.text.trim();
+
+                      if (email.isEmpty || password.length < 8) {
+                        AppSnackbar.error(
+                          context,
+                          'Please provide a valid email and 8+ char password',
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isPending = true);
+
+                      try {
+                        await _api.leaveFamilyAccount(email, password);
+                        if (context.mounted) {
+                          Navigator.pop(context); // Close dialog
+                          AppSnackbar.success(
+                            context,
+                            'Successfully left family! Logging out...',
+                          );
+                          // Wait a bit so user can read the success message
+                          await Future.delayed(const Duration(seconds: 2));
+                          if (mounted) _logout();
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          setDialogState(() => isPending = false);
+                          AppSnackbar.error(
+                            context,
+                            e.toString().replaceFirst('Exception: ', ''),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4F6BF6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: isPending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      'Confirm',
+                      style: TextStyle(color: Colors.white),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickImportFolder() async {
@@ -678,6 +934,8 @@ class _SettingsContentState extends State<_SettingsContent> {
           _buildExtensionsContent(),
         if (widget.category == SettingsCategory.autoImport)
           _buildAutoImportContent(),
+        if (widget.category == SettingsCategory.importPlaylist)
+          _buildImportPlaylistContent(),
         if (widget.category == SettingsCategory.pendingReviews)
           _buildPendingReviewsContent(),
         if (widget.category == SettingsCategory.logs) _buildLogsContent(),
@@ -703,6 +961,8 @@ class _SettingsContentState extends State<_SettingsContent> {
         return 'Manage your account and session.';
       case SettingsCategory.autoImport:
         return 'Configure how files are automatically imported into your library.';
+      case SettingsCategory.importPlaylist:
+        return 'Import songs from a public playlist URL.';
       case SettingsCategory.pendingReviews:
         return 'Review and approve AI-matched songs before uploading.';
       case SettingsCategory.logs:
@@ -3625,6 +3885,201 @@ class _SettingsContentState extends State<_SettingsContent> {
     }
   }
 
+  Widget _buildImportPlaylistContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader('Import from Public Playlist'),
+
+        // Explanation card
+        Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF8B5CF6).withOpacity(0.15),
+                const Color(0xFFEC4899).withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.playlist_add,
+                      color: Color(0xFF8B5CF6),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Batch Import Songs',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          'Import entire playlists at once',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Paste a public playlist URL and import all songs at once. Extensions will be used to download the audio files.',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    ImportPlaylistSheet.show(
+                      context,
+                      onComplete: () {
+                        // Could refresh library here if needed
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('Import from URL'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8B5CF6),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        _SectionHeader('How it works'),
+
+        // Step cards
+        _buildStepCard(
+          1,
+          'Paste playlist URL',
+          'Copy a public playlist link (e.g., from Spotify) and paste it in the import dialog.',
+          Icons.link,
+        ),
+        const SizedBox(height: 12),
+        _buildStepCard(
+          2,
+          'Review tracks',
+          'Preview all the tracks in the playlist before importing.',
+          Icons.preview,
+        ),
+        const SizedBox(height: 12),
+        _buildStepCard(
+          3,
+          'Download via extensions',
+          'Each track is downloaded using your enabled extensions.',
+          Icons.extension,
+        ),
+        const SizedBox(height: 12),
+        _buildStepCard(
+          4,
+          'Auto-upload to library',
+          'Songs are automatically uploaded to your cloud library.',
+          Icons.cloud_upload,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepCard(
+    int step,
+    String title,
+    String description,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                '$step',
+                style: const TextStyle(
+                  color: Color(0xFF8B5CF6),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Icon(icon, color: Colors.grey[600], size: 20),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutoImportContent() {
     final isAndroid = !kIsWeb && Platform.isAndroid;
     final hasCustomFolder =
@@ -4782,66 +5237,128 @@ class _SettingsContentState extends State<_SettingsContent> {
   }
 
   Widget _buildApiKeySection(String extensionId) {
-    // Smart Match is backend-based - just show subscription info
+    // Get extension-specific text
+    String activeTitle;
+    String disabledTitle;
+    String description;
+
+    switch (extensionId) {
+      case 'smart-match':
+        activeTitle = 'Cloud AI Active';
+        disabledTitle = 'Cloud AI Disabled';
+        description =
+            'Premium+ subscribers get AI-powered matching for accurate original artist detection.';
+      case 'carefree-import':
+        activeTitle = 'Carefree Import Active';
+        disabledTitle = 'Carefree Import Disabled';
+        description =
+            'Upload songs without needing Mapping & Reserve original metadata . Server identifies via audio fingerprint or ID3 tags. Premium+ required.';
+      default:
+        activeTitle = 'Active';
+        disabledTitle = 'Disabled';
+        description = 'Cloud-based extension. Premium+ subscription required.';
+    }
+
+    final isEnabled = ExtensionManagerService.instance.isEnabled(extensionId);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: extensionId == 'carefree-import'
+            ? const Color(0xFF7B68EE).withOpacity(0.15)
+            : Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
+        border: Border.all(
+          color: extensionId == 'carefree-import'
+              ? const Color(0xFF7B68EE).withOpacity(0.5)
+              : Colors.white.withOpacity(0.3),
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            ExtensionManagerService.instance.isEnabled(extensionId)
-                ? Icons.cloud_done
-                : Icons.cloud_off,
-            size: 18,
-            color: ExtensionManagerService.instance.isEnabled(extensionId)
-                ? Colors.white
-                : Colors.grey,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ExtensionManagerService.instance.isEnabled(extensionId)
-                      ? 'Cloud AI Active'
-                      : 'Cloud AI Disabled',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+          Row(
+            children: [
+              Icon(
+                isEnabled ? Icons.cloud_done : Icons.cloud_off,
+                size: 18,
+                color: isEnabled
+                    ? (extensionId == 'carefree-import'
+                          ? const Color(0xFF7B68EE)
+                          : Colors.white)
+                    : Colors.grey,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          isEnabled ? activeTitle : disabledTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF7B68EE), Color(0xFF9B7DFF)],
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'PREMIUM+',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Premium+ subscribers get AI-powered matching for accurate original artist detection.',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Switch(
-            value: ExtensionManagerService.instance.isEnabled(extensionId),
-            onChanged: (value) async {
-              await ExtensionManagerService.instance.setEnabled(
-                extensionId,
-                value,
-              );
-              if (value) {
-                // If enabled, trigger a scan of the import folder
-                ImportWatcherService.instance.checkExistingFiles();
-              }
-              setState(() {});
-            },
-            activeColor: Colors.white,
-            activeTrackColor: Colors.white.withOpacity(0.5),
-            inactiveThumbColor: Colors.grey[400],
-            inactiveTrackColor: Colors.grey[800],
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: isEnabled,
+                onChanged: (value) async {
+                  await ExtensionManagerService.instance.setEnabled(
+                    extensionId,
+                    value,
+                  );
+                  if (value) {
+                    // If enabled, trigger a scan of the import folder
+                    ImportWatcherService.instance.checkExistingFiles();
+                  }
+                  setState(() {});
+                },
+                activeColor: extensionId == 'carefree-import'
+                    ? const Color(0xFF7B68EE)
+                    : Colors.white,
+                activeTrackColor: extensionId == 'carefree-import'
+                    ? const Color(0xFF7B68EE).withOpacity(0.5)
+                    : Colors.white.withOpacity(0.5),
+                inactiveThumbColor: Colors.grey[400],
+                inactiveTrackColor: Colors.grey[800],
+              ),
+            ],
           ),
         ],
       ),
@@ -5039,21 +5556,62 @@ class _SettingsContentState extends State<_SettingsContent> {
         _SectionHeader('Profile'),
         _ProfileEditor(),
         const SizedBox(height: 32),
+
+        // Family Profiles Section
+        _SectionHeader('Family Profiles'),
+        _FamilyProfilesSection(),
+        const SizedBox(height: 32),
+
+        // Privacy Section
+        _SectionHeader('Privacy'),
+        _PrivacySection(),
+        const SizedBox(height: 32),
+
         _SectionHeader('Session'),
         _SettingsCard(
-          child: ListTile(
-            leading: _isLoggingOut
-                ? LoadingAnimationWidget.threeArchedCircle(
-                    color: Colors.redAccent,
-                    size: 24,
-                  )
-                : const Icon(Icons.logout, color: Colors.redAccent),
-            title: const Text('Log Out', style: TextStyle(color: Colors.white)),
-            subtitle: const Text(
-              'Sign out of your account on this device',
-              style: TextStyle(color: Colors.grey),
-            ),
-            onTap: _isLoggingOut ? null : _logout,
+          child: Column(
+            children: [
+              if (!_isOwner) ...[
+                ListTile(
+                  leading: const Icon(
+                    Icons.exit_to_app,
+                    color: Colors.orangeAccent,
+                  ),
+                  title: const Text(
+                    'Leave Family Account',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  subtitle: const Text(
+                    'Become an independent account with your own login',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  onTap: _showLeaveFamilyDialog,
+                ),
+                Divider(
+                  color: Colors.white.withOpacity(0.05),
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                ),
+              ],
+              ListTile(
+                leading: _isLoggingOut
+                    ? LoadingAnimationWidget.threeArchedCircle(
+                        color: Colors.redAccent,
+                        size: 24,
+                      )
+                    : const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text(
+                  'Log Out',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  'Sign out of your account on this device',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                onTap: _isLoggingOut ? null : _logout,
+              ),
+            ],
           ),
         ),
       ],
@@ -5246,18 +5804,171 @@ class _SettingsContentState extends State<_SettingsContent> {
 
         const SizedBox(height: 32),
 
-        // Info about more connections coming
-        Center(
-          child: Container(
-            padding: const EdgeInsets.all(20),
+        const SizedBox(height: 24),
+        _SectionHeader('Telegram'),
+        _SettingsCard(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.add_link, color: Colors.grey[600], size: 40),
-                const SizedBox(height: 12),
-                Text(
-                  'More connections coming soon',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0088CC).withAlpha(30),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: FaIcon(
+                          FontAwesomeIcons.telegram,
+                          color: Color(0xFF0088CC),
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Telegram Bot',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isTelegramLinked
+                                ? 'Linked to account'
+                                : 'Upload songs via Telegram',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_isTelegramLinked)
+                      TextButton(
+                        onPressed: _unlinkTelegram,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                        ),
+                        child: const Text('Unlink'),
+                      )
+                    else
+                      ElevatedButton(
+                        onPressed: _isGeneratingCode
+                            ? null
+                            : _generateTelegramCode,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0088CC),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: _isGeneratingCode
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Link Account'),
+                      ),
+                  ],
                 ),
+                if (!_isTelegramLinked && _telegramCode != null) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Send this code to @kiokuu_bot',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 300),
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(50),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF0088CC)),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _telegramCode!,
+                              style: GoogleFonts.robotoMono(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Expires in 10 minutes',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (_isTelegramLinked) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.greenAccent,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Connected as $_telegramId',
+                        style: TextStyle(
+                          color: Colors.greenAccent[100],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -5953,22 +6664,24 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 90,
     );
 
     if (picked == null) return;
 
-    // Check file size
-    final file = File(picked.path);
-    final fileSize = await file.length();
-    if (fileSize > 2 * 1024 * 1024) {
-      setState(() {
-        _errorMessage = 'Photo too large. Maximum size is 2MB';
-      });
-      return;
-    }
+    // Read image bytes for cropping
+    final imageBytes = await File(picked.path).readAsBytes();
+
+    // Show crop dialog
+    final croppedBytes = await showDialog<Uint8List>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _SettingsImageCropDialog(imageBytes: imageBytes),
+    );
+
+    if (croppedBytes == null) return;
 
     setState(() {
       _isUploadingPhoto = true;
@@ -5976,7 +6689,19 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       _successMessage = null;
     });
 
-    final (success, result) = await _api.uploadProfilePhoto(picked.path);
+    // Save cropped bytes to temp file
+    final tempDir = Directory.systemTemp;
+    final tempFile = File(
+      '${tempDir.path}/cropped_settings_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await tempFile.writeAsBytes(croppedBytes);
+
+    final (success, result) = await _api.uploadProfilePhoto(tempFile.path);
+
+    // Clean up temp file
+    try {
+      await tempFile.delete();
+    } catch (_) {}
 
     if (mounted) {
       setState(() {
@@ -5985,6 +6710,9 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           _photoUrl = result;
           _hasCustomPhoto = true;
           _successMessage = 'Profile photo updated!';
+
+          // Clear Flutter's image cache to force reload of the new versioned URL
+          imageCache.clear();
         } else {
           _errorMessage = result;
         }
@@ -6111,7 +6839,10 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                               : _photoUrl.isNotEmpty
                               ? Image.network(
                                   _photoUrl,
+                                  key: ValueKey(_photoUrl),
                                   fit: BoxFit.cover,
+                                  cacheWidth: 256,
+                                  cacheHeight: 256,
                                   errorBuilder: (_, __, ___) =>
                                       _buildDefaultAvatar(),
                                 )
@@ -6380,5 +7111,522 @@ class _ProfileEditorState extends State<_ProfileEditor> {
         ),
       ),
     );
+  }
+}
+
+// --- Family Profiles Section ---
+class _FamilyProfilesSection extends StatefulWidget {
+  @override
+  State<_FamilyProfilesSection> createState() => _FamilyProfilesSectionState();
+}
+
+class _FamilyProfilesSectionState extends State<_FamilyProfilesSection> {
+  final _api = ApiService();
+  List<Map<String, dynamic>> _profiles = [];
+  bool _isLoading = true;
+  bool _isOwner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    final result = await _api.getProfiles();
+    if (!mounted) return;
+
+    setState(() {
+      if (result != null) {
+        _profiles =
+            (result['profiles'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final currentUserId = result['current_user_id'] as String?;
+        final ownerId = result['owner_id'] as String?;
+        // If ownerId is null, assume they are the owner of a standalone account
+        _isOwner = ownerId == null || currentUserId == ownerId;
+      } else {
+        _profiles = [];
+        // Fallback to true so they see the CTA to "Add Profile" instead of an empty box
+        _isOwner = true;
+      }
+      _isLoading = false;
+    });
+  }
+
+  void _openProfileSelector() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ProfileSelectionScreen()),
+    );
+
+    if (result is Profile && mounted) {
+      // Clear music player state before switching profiles
+      final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+      musicProvider.clearPlaylist();
+
+      // Profile switched. Show splash screen but skip profile selection
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const SplashScreen(skipProfileSelection: true),
+        ),
+        (route) => false,
+      );
+    } else {
+      // Reload profiles (user cancelled or just browsed)
+      _loadProfiles();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const _SettingsCard(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    // If we only have the main profile (or none), show a CTA to add family members
+    // instead of an empty/single-item list.
+    final hasSubProfiles = _profiles.length > 1;
+    final showCTA = (_isOwner && !hasSubProfiles) || _profiles.isEmpty;
+
+    if (showCTA) {
+      return _SettingsCard(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Icon(
+                Icons.supervised_user_circle_outlined,
+                size: 48,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Share your subscription',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Add up to 5 family members to give them their own personalized music experience.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[400], fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _openProfileSelector,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Family Profile'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed:
+                    _openProfileSelector, // Opens selection screen where you can edit self
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.grey[500],
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Manage my profile',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _SettingsCard(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Netflix-style horizontal profile list
+            if (_profiles.isNotEmpty)
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount:
+                      _profiles.length +
+                      (_isOwner && _profiles.length < 5 ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index >= _profiles.length) {
+                      // Add profile button
+                      return GestureDetector(
+                        onTap: _openProfileSelector,
+                        child: Container(
+                          width: 70,
+                          margin: const EdgeInsets.only(right: 16),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.grey[700]!,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.add,
+                                  color: Colors.grey[500],
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Add',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    final profile = _profiles[index];
+                    final color = _getProfileColor(
+                      profile['color'] as String? ?? 'blue',
+                    );
+                    final isOwnerProfile = profile['is_owner'] == true;
+
+                    return GestureDetector(
+                      onTap: _openProfileSelector,
+                      child: Container(
+                        width: 70,
+                        margin: const EdgeInsets.only(right: 16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [color, color.withOpacity(0.7)],
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child:
+                                    (profile['photo_url'] as String?)
+                                            ?.isNotEmpty ==
+                                        true
+                                    ? Image.network(
+                                        profile['photo_url'] as String,
+                                        key: ValueKey(profile['photo_url']),
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 128,
+                                        cacheHeight: 128,
+                                        errorBuilder: (_, __, ___) => Center(
+                                          child: Text(
+                                            (profile['username'] as String? ??
+                                                    '?')[0]
+                                                .toUpperCase(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          (profile['username'] as String? ??
+                                                  '?')[0]
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              profile['username'] as String? ?? 'Unknown',
+                              style: TextStyle(
+                                color: isOwnerProfile
+                                    ? Colors.white
+                                    : Colors.grey[400],
+                                fontSize: 12,
+                                fontWeight: isOwnerProfile
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+            const SizedBox(height: 16),
+
+            // Manage profiles button
+            TextButton.icon(
+              onPressed: _openProfileSelector,
+              icon: const Icon(Icons.people_outline, size: 18),
+              label: const Text('Manage Profiles'),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey[400]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getProfileColor(String colorName) {
+    const colorMap = {
+      'blue': Color(0xFF4A90D9),
+      'purple': Color(0xFF9B59B6),
+      'green': Color(0xFF27AE60),
+      'orange': Color(0xFFE67E22),
+      'pink': Color(0xFFE91E63),
+      'red': Color(0xFFE74C3C),
+      'teal': Color(0xFF1ABC9C),
+      'indigo': Color(0xFF3F51B5),
+    };
+    return colorMap[colorName] ?? colorMap['blue']!;
+  }
+}
+
+// --- Privacy Section ---
+class _PrivacySection extends StatefulWidget {
+  @override
+  State<_PrivacySection> createState() => _PrivacySectionState();
+}
+
+class _PrivacySectionState extends State<_PrivacySection> {
+  final _api = ApiService();
+  bool _listeningActivityVisible = true;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrivacySettings();
+  }
+
+  Future<void> _loadPrivacySettings() async {
+    final profile = await _api.getProfile();
+    if (profile != null && mounted) {
+      setState(() {
+        _listeningActivityVisible =
+            profile['listening_activity_visible'] ?? true;
+        _isLoading = false;
+      });
+    } else if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleListeningActivity(bool value) async {
+    if (!mounted) return;
+    setState(() => _listeningActivityVisible = value);
+    final success = await _api.updatePrivacySettings(
+      listeningActivityVisible: value,
+    );
+    if (!success && mounted) {
+      setState(() => _listeningActivityVisible = !value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsCard(
+      child: ListTile(
+        leading: Icon(
+          _listeningActivityVisible ? Icons.visibility : Icons.visibility_off,
+          color: Colors.grey[400],
+        ),
+        title: const Text(
+          'Show Listening Activity',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: Text(
+          'Let friends see what you\'re listening to',
+          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        ),
+        trailing: _isLoading
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Switch(
+                value: _listeningActivityVisible,
+                activeColor: Colors.white,
+                activeTrackColor: const Color(0xFF4F6BF6),
+                inactiveThumbColor: Colors.grey[400],
+                inactiveTrackColor: Colors.grey[800],
+                onChanged: _toggleListeningActivity,
+              ),
+      ),
+    );
+  }
+}
+
+/// Dialog for cropping profile images with square aspect ratio
+class _SettingsImageCropDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+
+  const _SettingsImageCropDialog({required this.imageBytes});
+
+  @override
+  State<_SettingsImageCropDialog> createState() =>
+      _SettingsImageCropDialogState();
+}
+
+class _SettingsImageCropDialogState extends State<_SettingsImageCropDialog> {
+  final _cropController = CropController();
+  bool _isCropping = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Colors.white24, width: 1),
+      ),
+      insetPadding: const EdgeInsets.all(24),
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 500,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: _isCropping
+                        ? null
+                        : () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                  const Text(
+                    'Crop Photo',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _isCropping ? null : _onCrop,
+                    child: _isCropping
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.purple,
+                            ),
+                          )
+                        : const Text(
+                            'Done',
+                            style: TextStyle(
+                              color: Colors.purple,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Crop area
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white24),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Crop(
+                    image: widget.imageBytes,
+                    controller: _cropController,
+                    aspectRatio: 1.0, // Square
+                    initialRectBuilder: InitialRectBuilder.withSizeAndRatio(
+                      size: 0.9,
+                    ),
+                    withCircleUi: false,
+                    baseColor: const Color(0xFF1A1A1A),
+                    maskColor: Colors.black.withOpacity(0.6),
+                    interactive: true,
+                    fixCropRect:
+                        true, // Fixed crop area - user moves/zooms image
+                    onCropped: (croppedBytes) {
+                      Navigator.pop(context, croppedBytes);
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // Instructions
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+              child: Text(
+                'Drag to move • Pinch or scroll to zoom',
+                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onCrop() {
+    setState(() => _isCropping = true);
+    _cropController.crop();
   }
 }
